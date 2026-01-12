@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin - Sua Agenda Fácil - Geisi Nails</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <div class="container">
+    <h1 id="adminTitulo">Admin - Sua Agenda Fácil</h1>
+    <p class="subtitulo">Veja os dias e horários disponivéis.</p>
+
+    <label>Senha:</label>
+    <input type="password" id="adminSenha" placeholder="Digite sua senha" />
+
+    <button id="btnEntrarAdmin">Entrar</button>
+
+    <div id="adminConteudo" style="display:none; margin-top:15px;">
+      <label>Selecione a data:</label>
+      <input type="date" id="dataAdmin" />
+
+
+      <!--<h3>Agendamentos do dia</h3>
+
+      <div id="listaAgendamentos"></div>-->
+
+  
+  <h3>Mapa do dia</h3>
+<div id="mapaDia" class="mapa-dia"></div>
+
+<div style="font-size:12px;color:#999;margin-top:6px;">
+  </div>
+
+<h3>Ações do dia</h3>
+<div id="acoesDia" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+  <button id="btnVerAgendamentos" type="button">📋 Ver agendamentos</button>
+<div id="painelAgendamentos" style="display:none; margin-bottom:15px;">
+  <div id="listaAgendamentos"></div>
+</div>
+
+  <button id="btnConfirmarTodos" type="button">Confirmar todos (WhatsApp)</button>
+   <button onclick="limparAgendamentos()">Limpar todos os agendamentos</button>
+  
+</div>
+
+
+
+<!--         <button id="btnConfirmarTodos" style="margin-top:10px;">
+  //  Confirmar todos (WhatsApp)
+  //</button>
+
+div style="display:flex; gap:10px; align-items:center; margin:10px 0;">
+// <label style="margin:0;">
+//    <input type="checkbox" id="chkMapaCompacto" checked />
+//  </label>
+//</div> -->
+
+
+  <hr style="margin:30px 0;" />
+      
+ 
+
+
+<!-- BOTÃO: horários -->
+<button id="btnToggleHorarios" class="btn-toggle">
+  ⚙️ Configurar horários
+</button>
+
+<div id="secHorarios" style="display:none; margin-top:10px;">
+  <label>Fechar este dia?</label>
+  <select id="diaFechado">
+    <option value="nao">Não</option>
+    <option value="sim">Sim</option>
+  </select>
+
+  <label>Início do atendimento:</label>
+  <input type="time" id="inicioAtendimento" />
+
+  <label>Fim do atendimento:</label>
+  <input type="time" id="fimAtendimento" />
+
+  <label>Início do almoço:</label>
+  <input type="time" id="inicioAlmoco" />
+
+  <label>Fim do almoço:</label>
+  <input type="time" id="fimAlmoco" />
+
+  <button id="btnSalvarConfig">Salvar configuração</button>
+</div>
+
+<!-- BOTÃO: serviços -->
+<button id="btnToggleServicos" class="btn-toggle">
+  💅 Gerenciar serviços
+</button>
+
+<div id="secServicos" style="display:none; margin-top:10px;">
+  <h3>Serviços</h3>
+
+  <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+    <input id="novoServicoNome" type="text" placeholder="Nome do serviço" />
+    <input id="novoServicoDuracao" type="number" placeholder="Min" />
+    <input id="novoServicoPreco" type="text" placeholder="Preço (ex: 55,00)" />
+  </div>
+
+  <button id="btnAdicionarServico" style="margin-top:10px;">Adicionar serviço</button>
+
+  <div id="listaServicos" style="margin-top:10px;"></div>
+</div>
+    </div>
+  </div>
+
+
+
+  <script src="config.js"></script>
+  <script src="admin.js"></script>
+</body>
+
+</html>

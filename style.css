@@ -1,0 +1,454 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #fdf1f4;
+  padding: 30px 16px;
+}
+
+.container {
+  max-width: 520px;
+  width: 100%;
+  margin: 0 auto;
+  min-height: 90vh;       /* ocupa quase a altura do celular */
+  padding: 20px;
+}
+
+h1 {
+  text-align: center;
+  color: #c96b85;
+  margin: 0;
+  font-size: 26px;
+}
+
+.subtitulo {
+  text-align: center;
+  color: #666;
+  margin: 10px 0 18px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+label {
+  display: block;
+  margin-top: 14px;
+  font-weight: bold;
+  color: #555;
+}
+
+select, input, button {
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+  font-size: 14px;
+}
+
+button {
+  background: #c96b85;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+button:hover {
+  background: #b0556e;
+}
+
+.horarios button {
+  background: #f3d7df;
+  color: #5a2a36;
+  margin: 8px 0;
+  text-align: center;
+  width: 100%;
+}
+
+.horarios button:hover {
+  background: #efc7d2;
+}
+
+.aviso {
+  margin-top: 16px;
+  background: #fff4f7;
+  border: 1px solid #f3d7df;
+  padding: 12px;
+  border-radius: 10px;
+  color: #6a2e3d;
+  font-size: 13px;
+}
+
+.rodape {
+  margin-top: 18px;
+  text-align: center;
+  color: #999;
+  font-size: 12px;
+}
+.msg-sucesso {
+  margin-top: 14px;
+  background: #eafff0;
+  border: 1px solid #bfeccc;
+  color: #1f6b3a;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 999;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.modal-card h3 {
+  margin: 0 0 10px;
+  color: #2f7a4a;
+  font-size: 18px;
+}
+
+.modal-card p {
+  margin: 0 0 14px;
+  color: #444;
+  line-height: 1.4;
+}
+
+#btnOkModal {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  background: #c96b85;
+  color: #fff;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#btnOkModal:hover {
+  background: #b0556e;
+}
+
+.horarios button {
+  transition: all 0.2s ease;
+}
+
+.horarios button.selecionado {
+  background: #d57a93;
+  color: #fff;
+  transform: scale(0.98);
+  box-shadow: 0 0 0 2px rgba(213, 122, 147, 0.3);
+}
+
+
+/* =========================
+   AJUSTES MOBILE
+   ========================= */
+@media (max-width: 768px) {
+
+  body {
+    font-size: 16px;
+  }
+
+  h1 {
+    font-size: 22px;
+    margin-bottom: 8px;
+  }
+
+  h2 {
+    font-size: 16px;
+  }
+
+  label {
+    font-size: 16px;
+    margin-top: 16px;
+  }
+
+  select,
+  input {
+    font-size: 16px;
+    padding: 14px;
+  }
+
+  .horarios button {
+    font-size: 16px;
+    padding: 14px;
+    margin: 8px 0;
+    border-radius: 12px;
+  }
+
+  button {
+    font-size: 16px;
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .container {
+    padding: 20px;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 0;
+  }
+
+  /* Mensagens de sucesso / aviso */
+  .msg-sucesso,
+  .aviso {
+    font-size: 15px;
+    padding: 14px;
+    border-radius: 10px;
+  }
+
+  /* ADMIN */
+  .admin-lista button {
+    padding: 12px;
+    font-size: 15px;
+  }
+
+  .admin-lista div {
+    padding: 10px 0;
+  }
+}
+
+.btn-toggle,
+button {
+  width: 100%;
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+}
+.btn-toggle:active { transform: scale(0.99); }
+
+/* =========================
+   ADMIN - MOBILE (tela cheia e central)
+   ========================= */
+@media (max-width: 768px) {
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+    padding: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center; /* <-- isso centraliza verticalmente */
+  }
+
+  .container {
+    width: 100%;
+    max-width: 520px;
+    min-height: calc(100vh - 24px); /* ocupa quase a tela */
+    padding: 18px;
+    border-radius: 16px;
+    box-sizing: border-box;
+  }
+
+  h1 {
+    font-size: 22px;
+    margin: 8px 0 4px;
+  }
+
+  .container p,
+  label {
+    font-size: 16px;
+  }
+
+  input, select, button {
+    font-size: 16px;
+    padding: 14px;
+  }
+
+  button {
+    border-radius: 14px;
+  }
+}
+/* =========================
+   ADMIN – MOBILE FULL HEIGHT
+   ========================= */
+@media (max-width: 768px) {
+
+  body {
+    padding: 0;               /* REMOVE o empurrão */
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;      /* CENTRALIZA vertical */
+  }
+
+  .container {
+    width: 100%;
+    max-width: 520px;
+    min-height: 100vh;        /* ocupa a tela */
+    padding: 20px;
+    border-radius: 0;         /* visual mais “app” */
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 768px) {
+  body { padding: 0; margin: 0; }
+  .admin-container {
+    width: 100%;
+    max-width: 520px;
+    min-height: 100vh;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+}
+/* CLIENTE – mobile full */
+@media (max-width: 768px) {
+  body {
+    padding: 0;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .client-container {
+    width: 100%;
+    max-width: 520px;
+    min-height: 100vh;
+    padding: 20px;
+    border-radius: 0;
+    box-sizing: border-box;
+  }
+
+  .horarios button {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* Modal básico */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  z-index: 9999;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 18px;
+  box-sizing: border-box;
+}
+
+.modal-card label {
+  display: block;
+  margin-top: 10px;
+  font-size: 14px;
+  color: #444;
+}
+
+.modal-card input {
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  margin-top: 6px;
+  box-sizing: border-box;
+}
+
+.modal-card button {
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+  border-radius: 12px;
+  margin-top: 12px;
+  border: none;
+  background: #d57a93;
+  color: #fff;
+}
+
+.modal-card .btn-secundario {
+  background: #eee;
+  color: #333;
+}
+
+.msg-sucesso {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #e9fff0;
+  border: 1px solid #bde8c9;
+  color: #1f6b3a;
+}
+.mapa-dia {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.slot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #eee;
+  font-size: 14px;
+}
+
+.slot .left {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.badge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid #ddd;
+}
+
+.badge.livre { background: #ecfff2; border-color: #bfe8cc; }
+.badge.ocupado { background: #fff1f1; border-color: #f0c3c3; }
+.badge.almoco { background: #fff8e6; border-color: #f0dfb2; }
+.badge.fechado { background: #f2f2f2; border-color: #ddd; }
+
+.slot {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  margin: 10px 0;
+  align-items: flex-start;
+}
+
+.slot.ocupado { background: #ffecec; }
+.slot.livre   { background: #eafff0; }
+
+.slot-hora { min-width: 92px; }
+
+.slot-info { flex: 1; }
+
+.slot-linha.menor { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+.slot-acoes { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+.btn-acao { padding: 10px 12px; border-radius: 10px; border: 0; cursor: pointer; }
+.btn-sec { opacity: 0.9; }

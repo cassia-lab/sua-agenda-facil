@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sua Agenda Fácil - Geisi Nails</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+<!-- ✅ Modal de confirmação (dentro do body) -->
+<div id="modalConfirmacao" class="modal" style="display:none;">
+  <div class="modal-card">
+    <h3 id="modalTitulo">Informe seus dados para agendar</h3>
+
+    <p id="modalTexto"></p>
+
+    <label for="nomeCliente"><strong>Seu nome</strong></label>
+    <input
+      type="text"
+      id="nomeCliente"
+      placeholder="Ex: Cássia"
+      autocomplete="name"
+    />
+
+    <label for="telefoneCliente"><strong>Seu WhatsApp</strong></label>
+    <input
+      type="tel"
+      id="telefoneCliente"
+      placeholder="Digite seu WhatsApp (DDD + número)"
+      inputmode="numeric"
+      pattern="[0-9]*"
+      maxlength="15"
+      autocomplete="tel"
+    />
+
+    <button id="btnConfirmarModal" type="button">Confirmar</button>
+    <button id="btnCancelarModal" type="button" class="btn-secundario">Cancelar</button>
+  </div>
+</div>
+
+
+  <!-- ✅ Container do CLIENTE -->
+  <div class="container client-container">
+    <h1 id="tituloPagina"></h1>
+    <p class="subtitulo">Agende seu horário em poucos cliques.</p>
+
+    <label for="servico">Escolha o serviço:</label>
+    <select id="servico"></select>
+
+    <label for="data">Escolha a data:</label>
+    <input type="date" id="data" />
+
+    <label>Horários disponíveis:</label>
+    <div class="horarios" id="horarios"></div>
+
+    <div id="msgSucesso" class="msg-sucesso" style="display:none;"></div>
+
+    <p class="aviso"> ⏱ Leva menos de 1 minuto para agendar</p>
+
+    <p class="rodape">
+      Feito com <strong>Sua Agenda Fácil</strong>
+    </p>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="script.js"></script>
+</body>
+
+</html>
