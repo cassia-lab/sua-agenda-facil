@@ -216,8 +216,8 @@ function badge(texto) {
 
 if (s.tipo === "almoco") {
   direita.innerHTML = `<span style="
-    display:inline-block;20
-,    padding:4px 8px;
+    display:inline-block;
+    padding:4px 8px;
     border-radius:999px;
     font-size:12px;
     background:#f8fafc;

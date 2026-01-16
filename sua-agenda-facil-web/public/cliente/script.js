@@ -1,4 +1,4 @@
-
+﻿
 // ======== ELEMENTOS DA TELA ========
 const horariosDiv = document.getElementById("horarios");
 const servicoSelect = document.getElementById("servico");
@@ -138,27 +138,66 @@ function carregarServicos() {
   })).filter(item => item.nome && item.duracao > 0);
 }
 
-function renderSelectServicos() {
+async function renderSelectServicos() {
   if (!servicoSelect) return;
 
-  const lista = carregarServicos();
-  servicoSelect.innerHTML = "";
+  // feedback
+  servicoSelect.innerHTML = `<option>Carregando serviços...</option>`;
 
-  lista.forEach((s) => {
-    const opt = document.createElement("option");
-    opt.value = String(s.duracao);
-    opt.textContent = `${s.nome} (${s.duracao} min) — ${formatarPrecoBR(s.preco)}`;
-    servicoSelect.appendChild(opt);
-  });
+  try {
+    const lista = await carregarServicosAPI(); // deve retornar [{nome,duracao,preco}, ...]
+
+    // se veio vazio
+    if (!Array.isArray(lista) || lista.length === 0) {
+      servicoSelect.innerHTML = `<option value="">Nenhum serviço cadastrado</option>`;
+      return;
+    }
+
+    servicoSelect.innerHTML = "";
+
+    lista.forEach((s) => {
+      // segurança
+      const dur = Number(s.duracao || 0);
+      if (!dur) return;
+
+      const opt = document.createElement("option");
+      opt.value = String(dur);
+      opt.textContent = `${s.nome} (${dur} min) — ${formatarPrecoBR(Number(s.preco || 0))}`;
+      servicoSelect.appendChild(opt);
+    });
+
+    // garante que tem algo selecionado
+    if (!servicoSelect.value && servicoSelect.options.length) {
+      servicoSelect.selectedIndex = 0;
+    }
+  } catch (e) {
+    console.error("Erro ao carregar serviços:", e);
+    servicoSelect.innerHTML = `<option value="">Erro ao carregar serviços</option>`;
+  }
+}
+
+// init correto
+(async function initServicosEHorarios() {
+  await renderSelectServicos();
+  gerarHorarios();
+})();
+
+// quando trocar serviço, recalcula horários
+if (servicoSelect) {
+  servicoSelect.addEventListener("change", gerarHorarios);
 }
 
 
+
+
+
 // ======== PRINCIPAL ========
-function gerarHorarios() {
+async function gerarHorarios() {
+  if (!horariosDiv) return;
   horariosDiv.innerHTML = "";
 
-  const dia = dataInput.value;
-  const duracao = parseInt(servicoSelect.value, 10);
+  const dia = dataInput?.value;
+  const duracao = parseInt(servicoSelect?.value || "0", 10);
 
   if (!dia) {
     horariosDiv.textContent = "Selecione uma data para ver os horários.";
@@ -171,35 +210,63 @@ function gerarHorarios() {
     return;
   }
 
-  const config = carregarConfigDoDia(dia);
+  if (!duracao || duracao <= 0) {
+    horariosDiv.textContent = "Selecione um serviço.";
+    return;
+  }
+
+  // 1) Busca config do dia na API
+  let config;
+  try {
+    const r1 = await fetch(`/api/day-settings?date=${encodeURIComponent(dia)}`);
+    if (r1.ok) {
+      const j1 = await r1.json();
+      config = j1?.config;
+    }
+  } catch (e) {
+    console.error("Erro buscando config:", e);
+  }
+
+  // fallback (caso API falhe)
+  if (!config) config = carregarConfigDoDia(dia);
+
   if (config.fechado) {
     horariosDiv.textContent = "Este dia está fechado (sem atendimento).";
     return;
   }
 
-  const agendamentos = carregarAgendamentosDoDia(dia);
+  // 2) Busca agendamentos do dia na API
+  let agendamentos = [];
+  try {
+    const r2 = await fetch(`/api/bookings?date=${encodeURIComponent(dia)}`);
+    const j2 = await r2.json();
+    agendamentos = Array.isArray(j2?.bookings) ? j2.bookings : [];
+  } catch (e) {
+    console.error("Erro buscando bookings:", e);
+  }
+
+  // fallback (caso API falhe)
+  if (!agendamentos.length) agendamentos = carregarAgendamentosDoDia(dia);
 
   let achou = false;
+
   for (let start = config.diaInicio; start < config.diaFim; start += padrao.passoMinutos) {
     const end = start + duracao;
+
     if (!estaDisponivel(start, end, agendamentos, config)) continue;
 
     achou = true;
     const botao = document.createElement("button");
     botao.textContent = `${minutosParaHHMM(start)} (até ${minutosParaHHMM(end)})`;
+
     botao.onclick = () => {
+      document
+        .querySelectorAll(".horarios button.selecionado")
+        .forEach(b => b.classList.remove("selecionado"));
 
-  // remove seleção de outros botões
-  document
-    .querySelectorAll(".horarios button.selecionado")
-    .forEach(b => b.classList.remove("selecionado"));
-
-  // marca o botão atual
-  botao.classList.add("selecionado");
-
-  // chama o agendamento
-  agendar(dia, start, end, duracao);
-};
+      botao.classList.add("selecionado");
+      agendar(dia, start, end, duracao);
+    };
 
     horariosDiv.appendChild(botao);
   }
@@ -208,10 +275,10 @@ function gerarHorarios() {
     horariosDiv.textContent = "Nenhum horário disponível para esse serviço nessa data.";
   }
 }
+
 // guarda o "agendamento pendente" enquanto o modal está aberto
 let agendamentoPendente = null;
-const btnCancelar = document.getElementById("btnCancelarModal");
-if (btnCancelar) btnCancelar.textContent = "OK";
+
 
 
 function agendar(dia, start, end, duracao) {
@@ -397,28 +464,60 @@ function confirmarAgendamentoDoModal() {
  // console.log("[MAPA] render inicial:", dataAdminInput.value);
   //renderMapaDoDia(dataAdminInput.value);
 //}
+async function carregarServicosAPI() {
+  const resp = await fetch("/api/services", { cache: "no-store" });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+  const json = await resp.json();
+  const services = Array.isArray(json.services) ? json.services : [];
+
+  return services
+    .filter(s => s.active !== false)
+    .map(s => ({
+      nome: s.name,
+      duracao: Number(s.duration_minutes || 0),
+      preco: Number(s.price_cents || 0) / 100
+    }))
+    .filter(s => s.nome && s.duracao > 0);
+}
+
 
 
 // ======== INICIALIZAÇÃO ========
-(function initData() {
-  if (!dataInput) return; // ✅ evita quebrar se o input não existir
 
-  const hoje = new Date();
-  const yyyy = hoje.getFullYear();
-  const mm = String(hoje.getMonth() + 1).padStart(2, "0");
-  const dd = String(hoje.getDate()).padStart(2, "0");
+(async function init() {
+  // ... seu initData (min/value) pode ficar como está
 
-  dataInput.min = `${yyyy}-${mm}-${dd}`;
-
-  // só seta valor se ainda não tiver
-  if (!dataInput.value) {
-    const prox = proximaDataPermitidaLocal();
-    const y2 = prox.getFullYear();
-    const m2 = String(prox.getMonth() + 1).padStart(2, "0");
-    const d2 = String(prox.getDate()).padStart(2, "0");
-    dataInput.value = `${y2}-${m2}-${d2}`;
+  if (servicoSelect) {
+    servicoSelect.addEventListener("change", gerarHorarios);
   }
+
+  if (dataInput) {
+    dataInput.addEventListener("change", () => {
+      const dia = dataInput.value;
+      if (!dia) {
+        gerarHorarios();
+        return;
+      }
+
+      const utc = parseYYYYMMDD(dia);
+      if (!diaSemanaPermitidoUTC(utc)) {
+        alert("Atendimento somente de terça a sábado. Vou ajustar para a próxima data válida.");
+        const prox = proximaDataPermitidaLocal();
+        const y2 = prox.getFullYear();
+        const m2 = String(prox.getMonth() + 1).padStart(2, "0");
+        const d2 = String(prox.getDate()).padStart(2, "0");
+        dataInput.value = `${y2}-${m2}-${d2}`;
+      }
+
+      gerarHorarios();
+    });
+  }
+
+  await renderSelectServicos(); // <-- carrega do Supabase
+  gerarHorarios();              // <-- só depois disso
 })();
+
 
 // ✅ Eventos com proteção
 if (servicoSelect) {
@@ -447,60 +546,10 @@ if (dataInput) {
   });
 }
 
-gerarHorarios();
+renderSelectServicos().then(() => {
+  gerarHorarios();
+});
 
-// ======== INICIALIZAÇÃO (GARANTIR DATA + EVENTOS) ========
-(function initData() {
-  if (!dataInput) return;
-
-  const hoje = new Date();
-  const yyyy = hoje.getFullYear();
-  const mm = String(hoje.getMonth() + 1).padStart(2, "0");
-  const dd = String(hoje.getDate()).padStart(2, "0");
-
-  // não deixa agendar no passado
-  dataInput.min = `${yyyy}-${mm}-${dd}`;
-
-  // se não tiver data selecionada ainda, seta uma válida
-  if (!dataInput.value) {
-    const prox = proximaDataPermitidaLocal();
-    const y2 = prox.getFullYear();
-    const m2 = String(prox.getMonth() + 1).padStart(2, "0");
-    const d2 = String(prox.getDate()).padStart(2, "0");
-    dataInput.value = `${y2}-${m2}-${d2}`;
-  }
-})();
-
-// Eventos (garantir que existem)
-if (servicoSelect) {
-  servicoSelect.addEventListener("change", gerarHorarios);
-}
-
-if (dataInput) {
-  dataInput.addEventListener("change", () => {
-    const dia = dataInput.value;
-    if (!dia) {
-      gerarHorarios();
-      return;
-    }
-
-    const utc = parseYYYYMMDD(dia);
-    if (!diaSemanaPermitidoUTC(utc)) {
-      alert("Atendimento somente de terça a sábado. Vou ajustar para a próxima data válida.");
-      const prox = proximaDataPermitidaLocal();
-      const y2 = prox.getFullYear();
-      const m2 = String(prox.getMonth() + 1).padStart(2, "0");
-      const d2 = String(prox.getDate()).padStart(2, "0");
-      dataInput.value = `${y2}-${m2}-${d2}`;
-    }
-
-    gerarHorarios();
-  });
-}
-
-renderSelectServicos();
-
-gerarHorarios();
 
 // botões do modal
 document.getElementById("btnConfirmarModal")?.addEventListener("click", confirmarAgendamentoDoModal);
