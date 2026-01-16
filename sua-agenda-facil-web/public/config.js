@@ -3,5 +3,6 @@ window.APP_CONFIG = {
   senhaAdmin: "123",
   telefoneWhatsapp: "5515991145297", // troque pelo número da dona (DDD + número),
   slug: "geisi"
+  
 };
 
