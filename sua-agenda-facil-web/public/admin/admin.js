@@ -11,17 +11,25 @@ const btnEntrarAdmin = document.getElementById("btnEntrarAdmin");
 const adminConteudo = document.getElementById("adminConteudo");
 
 const dataAdmin = document.getElementById("dataAdmin");
+const dataHorario = document.getElementById("dataHorario");
 const diaFechadoSelect = document.getElementById("diaFechado");
 const inicioAtendimentoInput = document.getElementById("inicioAtendimento");
 const fimAtendimentoInput = document.getElementById("fimAtendimento");
 const inicioAlmocoInput = document.getElementById("inicioAlmoco");
 const fimAlmocoInput = document.getElementById("fimAlmoco");
+const defaultInicioAtendimento = document.getElementById("defaultInicioAtendimento");
+const defaultFimAtendimento = document.getElementById("defaultFimAtendimento");
+const defaultInicioAlmoco = document.getElementById("defaultInicioAlmoco");
+const defaultFimAlmoco = document.getElementById("defaultFimAlmoco");
 const btnSalvarConfig = document.getElementById("btnSalvarConfig");
+const btnSalvarPadraoCompleto = document.getElementById("btnSalvarPadraoCompleto");
+const listaFechadosForaPadrao = document.getElementById("listaFechadosForaPadrao");
 
 const btnConfirmarTodos = document.getElementById("btnConfirmarTodos");
-const listaAgendamentos = document.getElementById("listaAgendamentos");
-const painelAgendamentos = document.getElementById("painelAgendamentos");
+const btnLimparAgendamentos = document.getElementById("btnLimparAgendamentos");
 const btnVerAgendamentos = document.getElementById("btnVerAgendamentos");
+const painelAgendamentos = document.getElementById("painelAgendamentos");
+const listaAgendamentos = document.getElementById("listaAgendamentos");
 
 const novoServicoNome = document.getElementById("novoServicoNome");
 const novoServicoDuracao = document.getElementById("novoServicoDuracao");
@@ -29,19 +37,50 @@ const btnAdicionarServico = document.getElementById("btnAdicionarServico");
 const listaServicos = document.getElementById("listaServicos");
 const btnToggleHorarios = document.getElementById("btnToggleHorarios");
 const btnToggleServicos = document.getElementById("btnToggleServicos");
+const btnTogglePadrao = document.getElementById("btnTogglePadrao");
+const btnToggleExcecoes = document.getElementById("btnToggleExcecoes");
 const secHorarios = document.getElementById("secHorarios");
+const secPadrao = document.getElementById("secPadrao");
+const secExcecoes = document.getElementById("secExcecoes");
 const secServicos = document.getElementById("secServicos");
 const dataAdminInput = document.getElementById("dataAdmin");
+const semanaDescanso = document.getElementById("semanaDescanso");
+const btnMesPrev = document.getElementById("btnMesPrev");
+const btnMesNext = document.getElementById("btnMesNext");
+const labelMesAtual = document.getElementById("labelMesAtual");
+const calendarioGrid = document.getElementById("calendarioGrid");
+const agendaMensal = document.getElementById("agendaMensal");
+const agendaDetalheTitulo = document.getElementById("agendaDetalheTitulo");
+const agendaDetalheLista = document.getElementById("agendaDetalheLista");
+const agendaDetalhePopover = document.getElementById("agendaDetalhePopover");
+const agendaDetalheFechar = document.getElementById("agendaDetalheFechar");
 
 
-function toggleSection(el) {
+
+async function refreshCalendario() {
+  if (typeof calendarioCache !== "undefined" && calendarioCache) {
+    calendarioCache.clear();
+  }
+  if (painelAgendamentos && painelAgendamentos.style.display === "block") {
+    await renderCalendarioMes();
+  }
+}function toggleSection(el) {
   if (!el) return;
   const isHidden = (el.style.display === "none" || el.style.display === "");
   el.style.display = isHidden ? "block" : "none";
 }
 
 if (btnToggleHorarios) btnToggleHorarios.addEventListener("click", () => toggleSection(secHorarios));
+if (btnTogglePadrao) btnTogglePadrao.addEventListener("click", () => toggleSection(secPadrao));
+if (btnToggleExcecoes) btnToggleExcecoes.addEventListener("click", () => toggleSection(secExcecoes));
 if (btnToggleServicos) btnToggleServicos.addEventListener("click", () => toggleSection(secServicos));
+if (btnVerAgendamentos) btnVerAgendamentos.addEventListener("click", async () => {
+  const aberto = painelAgendamentos && painelAgendamentos.style.display === "block";
+  if (painelAgendamentos) painelAgendamentos.style.display = aberto ? "none" : "block";
+  if (!aberto) {
+    await renderCalendarioMes();
+  }
+});
 
 
 // ================== PADRÕES ==================
@@ -52,32 +91,153 @@ const padrao = {
   almocoFim: 13 * 60
 };
 
-// ================== STORAGE KEYS ==================
-function keyAgendamentos(dia) {
-  return `agendamentos:${dia}`;
-}
-function keyConfigDia(dia) {
-  return `configDia:${dia}`;
-}
-// ================== STORAGE OPS ==================
-function carregarAgendamentosDoDia(dia) {
-  return JSON.parse(localStorage.getItem(keyAgendamentos(dia))) || [];
+// ================== API OPS ==================
+
+async function carregarHorarioPadrao() {
+  if (!defaultInicioAtendimento || !defaultFimAtendimento || !defaultInicioAlmoco || !defaultFimAlmoco) return;
+  try {
+    const resp = await fetch("/api/default-settings", { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const json = await resp.json();
+    const cfg = json?.config || {};
+    defaultInicioAtendimento.value = minutosParaHHMM(Number(cfg.diaInicio ?? 480));
+    defaultFimAtendimento.value = minutosParaHHMM(Number(cfg.diaFim ?? 1020));
+    defaultInicioAlmoco.value = minutosParaHHMM(Number(cfg.almocoInicio ?? 720));
+    defaultFimAlmoco.value = minutosParaHHMM(Number(cfg.almocoFim ?? 780));
+  } catch (e) {
+    console.error("Erro ao carregar horario padrao:", e);
+  }
 }
 
-function carregarConfigDoDia(dia) {
-  return JSON.parse(localStorage.getItem(keyConfigDia(dia))) || {
-    fechado: false,
-    diaInicio: padrao.diaInicio,
-    diaFim: padrao.diaFim,
-    almocoInicio: padrao.almocoInicio,
-    almocoFim: padrao.almocoFim
+async function salvarHorarioPadrao(silent = false) {
+  if (!defaultInicioAtendimento || !defaultFimAtendimento || !defaultInicioAlmoco || !defaultFimAlmoco) return false;
+  const ini = hhmmParaMinutos(defaultInicioAtendimento.value);
+  const fim = hhmmParaMinutos(defaultFimAtendimento.value);
+  const almIni = hhmmParaMinutos(defaultInicioAlmoco.value);
+  const almFim = hhmmParaMinutos(defaultFimAlmoco.value);
+
+  if (ini == null || fim == null || almIni == null || almFim == null) {
+    if (!silent) alert("Preencha todos os horarios padrao.");
+    return false;
+  }
+  if (ini >= fim) {
+    if (!silent) alert("Inicio precisa ser antes do fim.");
+    return false;
+  }
+  if (almIni > almFim) {
+    if (!silent) alert("Almoco invalido (ou coloque igual para desativar).");
+    return false;
+  }
+
+  try {
+    const resp = await fetch("/api/default-settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        diaInicio: ini,
+        diaFim: fim,
+        almocoInicio: almIni,
+        almocoFim: almFim
+      })
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
+  } catch (e) {
+    console.error("Erro ao salvar horario padrao:", e);
+    if (!silent) alert("Nao foi possivel salvar o horario padrao.");
+    return false;
+  }
+
+  if (!silent) alert("Horario padrao salvo.");
+  return true;
+}
+async function salvarPadraoCompleto() {
+  const okDias = await salvarDiasDescanso(true);
+  const okHorario = await salvarHorarioPadrao(true);
+  if (!okDias || !okHorario) return;
+  alert("Funcionamento padrao salvo.");
+  if (typeof calendarioCache !== "undefined" && calendarioCache) {
+    calendarioCache.clear();
+  }
+  if (painelAgendamentos && painelAgendamentos.style.display === "block") {
+    await renderCalendarioMes();
+  }
+}
+async function carregarAgendamentosDoDia(dia) {
+  const resp = await fetch(`/api/bookings?date=${encodeURIComponent(dia)}`, {
+    cache: "no-store"
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json = await resp.json();
+  const bookings = Array.isArray(json?.bookings) ? json.bookings : [];
+
+  return bookings.map((b) => ({
+    id: b?.id ?? null,
+    start: Number(b?.start_min ?? b?.start),
+    end: Number(b?.end_min ?? b?.end),
+    nome: b?.client_name ?? b?.nome ?? b?.name ?? null,
+    telefone: b?.client_phone ?? b?.telefone ?? b?.phone ?? null,
+    servico: b?.service_name ?? b?.servico ?? b?.service ?? null
+  })).filter(b => Number.isFinite(b.start) && Number.isFinite(b.end));
+}
+
+async function carregarConfigDoDia(dia) {
+  const resp = await fetch(`/api/day-settings?date=${encodeURIComponent(dia)}`, {
+    cache: "no-store"
+  });
+  if (resp.status === 404) {
+    return {
+      fechado: false,
+      diaInicio: padrao.diaInicio,
+      diaFim: padrao.diaFim,
+      almocoInicio: padrao.almocoInicio,
+      almocoFim: padrao.almocoFim
+    };
+  }
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json = await resp.json();
+  if (!json?.config) throw new Error("Config not found");
+  return json.config;
+}
+
+async function salvarConfigDoDia(dia, cfg) {
+  const payload = {
+    day: dia,
+    fechado: Boolean(cfg.fechado),
+    diaInicio: Number(cfg.diaInicio),
+    diaFim: Number(cfg.diaFim),
+    almocoInicio: Number(cfg.almocoInicio),
+    almocoFim: Number(cfg.almocoFim)
   };
-}
 
-function salvarConfigDoDia(dia, cfg) {
-  localStorage.setItem(keyConfigDia(dia), JSON.stringify(cfg));
+  let resp = await fetch("/api/day-settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (resp.status === 409) {
+    resp = await fetch("/api/day-settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  }
+
+  if (!resp.ok) {
+    let msg = "Erro ao salvar configuracao.";
+    try {
+      const json = await resp.json();
+      msg = json?.error || msg;
+    } catch {
+      // ignore
+    }
+    throw new Error(msg);
+  }
+
+  return resp.json();
 }
-function renderMapaDoDia(dia) {
+async function renderMapaDoDia(dia) {
   const el = document.getElementById("mapaDia");
   if (!el) return;
 
@@ -97,15 +257,23 @@ function renderMapaDoDia(dia) {
     return;
   }
 
-  // config do dia
-  const config = (typeof carregarConfigDoDia === "function")
-    ? carregarConfigDoDia(dia)
-    : { fechado:false, diaInicio:480, diaFim:1020, almocoInicio:720, almocoFim:780 };
+  let config;
+  try {
+    config = await carregarConfigDoDia(dia);
+  } catch (e) {
+    console.error("Erro buscando config:", e);
+    el.innerHTML = "<p>Erro ao carregar configuracao do dia.</p>";
+    return;
+  }
 
-  // agendamentos do dia
-  const agendamentos = (typeof carregarAgendamentosDoDia === "function")
-    ? carregarAgendamentosDoDia(dia)
-    : (JSON.parse(localStorage.getItem(`agendamentos:${dia}`)) || []);
+  let agendamentos = [];
+  try {
+    agendamentos = await carregarAgendamentosDoDia(dia);
+  } catch (e) {
+    console.error("Erro buscando agendamentos:", e);
+    el.innerHTML = "<p>Erro ao carregar agendamentos do dia.</p>";
+    return;
+  }
 
   if (config.fechado) {
     el.innerHTML = `<div style="padding:10px;border-radius:12px;background:#fff;">
@@ -289,25 +457,30 @@ Qualquer coisa, responda por aqui.`;
       btnApagar.textContent = "Apagar";
       btnApagar.style.width = "auto";
 
-      btnApagar.onclick = () => {
+      btnApagar.onclick = async () => {
         const ok = confirm("Apagar este agendamento?");
         if (!ok) return;
 
-        const lista = carregarAgendamentosDoDia(dia);
-        const idx = lista.findIndex(a =>
-          a.start === ag.start &&
-          a.end === ag.end &&
-          (a.telefone || "") === (ag.telefone || "") &&
-          (a.nome || "") === (ag.nome || "") &&
-          (a.servico || "") === (ag.servico || "")
-        );
+        if (!ag.id) {
+          alert("Nao foi possivel identificar este agendamento.");
+          return;
+        }
 
-        if (idx >= 0) {
-          lista.splice(idx, 1);
-          salvarAgendamentosDoDia(dia, lista);
-          renderMapaDoDia(dia);
-          // se você ainda tiver lista antiga, atualiza também:
-          if (typeof renderAgendamentos === "function") renderAgendamentos(dia);
+        try {
+          const resp = await fetch(`/api/bookings?id=${encodeURIComponent(ag.id)}`, {
+            method: "DELETE"
+          });
+          const json = await resp.json().catch(() => ({}));
+          if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
+        } catch (e) {
+          console.error("Erro ao apagar agendamento:", e);
+          alert("Nao foi possivel apagar o agendamento.");
+          return;
+        }
+
+        await renderMapaDoDia(dia);
+        if (typeof renderAgendamentos === "function") {
+          await renderAgendamentos(dia);
         }
       };
 
@@ -347,40 +520,68 @@ function hhmm(min) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-function confirmarAgendamentoAdmin(dia, start, telefone, servico) {
+async function confirmarAgendamentoAdmin(dia, start, telefone, servico) {
   if (!telefone) {
-    alert("Esse agendamento não tem telefone.");
+    alert("Esse agendamento nao tem telefone.");
     return;
   }
 
-  const ags = carregarAgendamentosDoDia(dia);
+  let ags = [];
+  try {
+    ags = await carregarAgendamentosDoDia(dia);
+  } catch (e) {
+    console.error("Erro buscando agendamentos:", e);
+    return;
+  }
+
   const ag = ags.find(a => a.start === start);
   if (!ag) return;
 
   const dataBR = formatarDataBR(dia);
   const msg =
-`Olá ${ag.nome || ""}! Confirmando seu horário ✅
+`Ola ${ag.nome || ""}! Confirmando seu horario.
 
-Serviço: ${ag.servico || servico || ""}
+Servico: ${ag.servico || servico || ""}
 Data: ${dataBR}
 Hora: ${minutosParaHHMM(ag.start)}
 
-Qualquer imprevisto é só avisar.`;
+Qualquer imprevisto, avise por aqui.`;
 
   const url = `https://wa.me/${telefone}?text=${encodeURIComponent(msg)}`;
   window.open(url, "_blank");
 }
 
-function apagarAgendamentoAdmin(dia, start) {
+async function apagarAgendamentoAdmin(dia, start) {
   const ok = confirm("Apagar esse agendamento?");
   if (!ok) return;
 
-  const ags = carregarAgendamentosDoDia(dia);
-  const novo = ags.filter(a => a.start !== start);
-  salvarAgendamentosDoDia(dia, novo);
+  let ags = [];
+  try {
+    ags = await carregarAgendamentosDoDia(dia);
+  } catch (e) {
+    console.error("Erro buscando agendamentos:", e);
+    return;
+  }
 
-  // re-render
-  renderMapaDoDia(dia);
+  const ag = ags.find(a => a.start === start);
+  if (!ag || !ag.id) {
+    alert("Nao foi possivel identificar este agendamento.");
+    return;
+  }
+
+  try {
+    const resp = await fetch(`/api/bookings?id=${encodeURIComponent(ag.id)}`, {
+      method: "DELETE"
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
+  } catch (e) {
+    console.error("Erro ao apagar agendamento:", e);
+    alert("Nao foi possivel apagar o agendamento.");
+    return;
+  }
+
+  await renderMapaDoDia(dia);
 }
 
 
@@ -435,34 +636,63 @@ function abrirConfirmacaoWhatsApp(dia, ag) {
 
   return `https://wa.me/${numeroFinal}?text=${encodeURIComponent(mensagem)}`;
 }
-function keyServicos() {
-  // por enquanto, 1 lista por página (cliente)
-  const slug = window.APP_CONFIG?.slug || "default";
-  return `servicos:${slug}`;
+async function carregarServicosAPI() {
+  const resp = await fetch("/api/services?all=1", { cache: "no-store" });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json = await resp.json();
+  return Array.isArray(json?.services) ? json.services : [];
 }
 
-function servicosPadrao() {
-  return [
-    { nome: "Pé", duracao: 50 },
-    { nome: "Mão", duracao: 60 },
-    { nome: "Pé + Mão", duracao: 120 }
-  ];
+async function criarServico(payload) {
+  const resp = await fetch("/api/services", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
+  return json?.service || null;
 }
 
-function carregarServicos() {
-  const s = JSON.parse(localStorage.getItem(keyServicos()));
-  return Array.isArray(s) && s.length ? s : servicosPadrao();
+async function atualizarServico(payload) {
+  const resp = await fetch("/api/services", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
+  return json?.service || null;
 }
 
-function salvarServicos(lista) {
-  localStorage.setItem(keyServicos(), JSON.stringify(lista));
+async function apagarServico(id) {
+  const resp = await fetch(`/api/services?id=${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
+  return json;
 }
-// adicionar função //
-function renderServicos() {
-  const servicos = carregarServicos();
+
+async function renderServicos() {
+  if (!listaServicos) return;
   listaServicos.innerHTML = "";
 
-  servicos.forEach((s, idx) => {
+  let servicos = [];
+  try {
+    servicos = await carregarServicosAPI();
+  } catch (e) {
+    console.error("Erro carregando servicos:", e);
+    listaServicos.textContent = "Erro ao carregar servicos.";
+    return;
+  }
+
+  if (!servicos.length) {
+    listaServicos.textContent = "Nenhum servico cadastrado.";
+    return;
+  }
+
+  servicos.forEach((s) => {
     const linha = document.createElement("div");
     linha.style.display = "flex";
     linha.style.justifyContent = "space-between";
@@ -472,66 +702,80 @@ function renderServicos() {
     linha.style.gap = "10px";
 
     const info = document.createElement("div");
-    info.innerHTML = `<strong>${s.nome}</strong><br>
-    <span>${s.duracao} min</span> • <span>${formatarPrecoBR(s.preco)}</span>`;
+    const preco = Number(s.price_cents || 0) / 100;
+    info.innerHTML = `<strong>${s.name}</strong><br><span>${s.duration_minutes} min</span> - <span>${formatarPrecoBR(preco)}</span>`;
 
     function formatarPrecoBR(v) {
       const n = Number(v || 0);
-      return n.toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL"
-      });
+      return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     }
 
-    // ✅ botão EDITAR
     const btnEditar = document.createElement("button");
     btnEditar.textContent = "Editar";
     btnEditar.style.width = "auto";
     btnEditar.style.padding = "6px 10px";
     btnEditar.style.marginTop = "0";
 
-    btnEditar.onclick = () => {
-      const novoNome = prompt("Nome do serviço:", s.nome);
+    btnEditar.onclick = async () => {
+      const novoNome = prompt("Nome do servico:", s.name);
       if (!novoNome || !novoNome.trim()) return;
 
-      const novaDur = parseInt(prompt("Duração em minutos", String(s.duracao)), 10);
+      const novaDur = parseInt(prompt("Duracao em minutos", String(s.duration_minutes)), 10);
       if (!novaDur || novaDur < 10) {
-        alert("Duração inválida. Ex: 50, 60, 120.");
+        alert("Duracao invalida. Ex: 50, 60, 120.");
         return;
       }
-      const precoAtual = (s.preco ?? 0);
-      const novoPrecoRaw = prompt("Preço (ex: 55,00):", String(precoAtual).replace(".", ","));
+
+      const precoAtual = Number(s.price_cents || 0) / 100;
+      const novoPrecoRaw = prompt("Preco (ex: 55,00):", String(precoAtual).replace(".", ","));
       if (!novoPrecoRaw || !novoPrecoRaw.trim()) return;
 
       const novoPreco = parseFloat(novoPrecoRaw.replace(".", "").replace(",", "."));
-      if (!novoPreco || novoPreco <= 0) {
-        alert("Preço inválido.");
+      if (!Number.isFinite(novoPreco) || novoPreco < 0) {
+        alert("Preco invalido.");
         return;
       }
 
-      servicos[idx] = { nome: novoNome.trim(), duracao: novaDur, preco: novoPreco };
-      salvarServicos(servicos);
-      renderServicos();
-      alert("Serviço atualizado ✅");
+      try {
+        await atualizarServico({
+          id: s.id,
+          name: novoNome.trim(),
+          duration_minutes: novaDur,
+          price_cents: Math.round(novoPreco * 100)
+        });
+      } catch (e) {
+        console.error("Erro ao atualizar servico:", e);
+        alert("Nao foi possivel atualizar o servico.");
+        return;
+      }
+
+      await renderServicos();
+      alert("Servico atualizado com sucesso.");
     };
 
-    // ✅ botão APAGAR
     const btnApagar = document.createElement("button");
     btnApagar.textContent = "Apagar";
     btnApagar.style.width = "auto";
     btnApagar.style.padding = "6px 10px";
     btnApagar.style.marginTop = "0";
 
-    btnApagar.onclick = () => {
-      const ok = confirm(`Apagar o serviço "${s.nome}"?`);
+    btnApagar.onclick = async () => {
+      const ok = confirm(`Apagar o servico "${s.name}"?`);
       if (!ok) return;
-      servicos.splice(idx, 1);
-      salvarServicos(servicos);
-      renderServicos();
-      alert("Serviço removido ✅");
+      try {
+        const json = await apagarServico(s.id);
+        if (json?.deactivated) {
+          alert("Servico possui agendamentos. Foi desativado.");
+        }
+      } catch (e) {
+        console.error("Erro ao apagar servico:", e);
+        alert("Nao foi possivel apagar o servico.");
+        return;
+      }
+      await renderServicos();
+      alert("Servico removido.");
     };
 
-    // Agrupa botões (fica mais bonito)
     const acoes = document.createElement("div");
     acoes.style.display = "flex";
     acoes.style.gap = "8px";
@@ -543,201 +787,104 @@ function renderServicos() {
     listaServicos.appendChild(linha);
   });
 }
-
-function limparAgendamentos() {
+async function limparAgendamentos() {
   const ok = confirm("Tem certeza? Isso apagará TODOS os agendamentos.");
   if (!ok) return;
 
-  Object.keys(localStorage)
-    .filter(k => k.startsWith("agendamentos:"))
-    .forEach(k => localStorage.removeItem(k));
+  try {
+    const resp = await fetch("/api/bookings?all=1", { method: "DELETE" });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
+  } catch (e) {
+    console.error("Erro ao apagar agendamentos:", e);
+    alert("Nao foi possivel apagar os agendamentos.");
+    return;
+  }
 
-  alert("Agenda limpa com sucesso ✅");
-  renderAgendaAdmin(); // se existir
+  alert("Agenda limpa com sucesso.");
+  const dia = dataAdmin?.value;
+  if (dia) {
+    await renderMapaDoDia(dia);
+    if (typeof renderAgendamentos === "function") {
+      await renderAgendamentos(dia);
+    }
+  }
 }
 // Adicionar o botão de adicionar serviço //
 if (btnAdicionarServico) {
-  btnAdicionarServico.addEventListener("click", () => {
+  btnAdicionarServico.addEventListener("click", async () => {
     const nome = (novoServicoNome.value || "").trim();
     const dur = parseInt(novoServicoDuracao.value, 10);
     const precoRaw = (novoServicoPreco.value || "").trim();
 
     if (!nome) {
-      alert("Digite o nome do serviço.");
+      alert("Digite o nome do servico.");
       return;
     }
 
     if (!dur || dur < 10) {
-      alert("Duração inválida.");
+      alert("Duracao invalida.");
       return;
     }
 
     if (!precoRaw) {
-      alert("Digite o preço. Ex: 55,00");
+      alert("Digite o preco. Ex: 55,00");
       return;
     }
 
-    // aceita 55, 55,00 ou 55.00
     const preco = parseFloat(precoRaw.replace(".", "").replace(",", "."));
-    if (!preco || preco <= 0) {
-      alert("Preço inválido.");
+    if (!Number.isFinite(preco) || preco < 0) {
+      alert("Preco invalido.");
       return;
     }
 
-    const servicos = carregarServicos();
-    servicos.push({
-      nome,
-      duracao: dur,
-      preco: preco
-    });
-
-    salvarServicos(servicos);
+    try {
+      await criarServico({
+        name: nome,
+        duration_minutes: dur,
+        price_cents: Math.round(preco * 100),
+        active: true
+      });
+    } catch (e) {
+      console.error("Erro ao criar servico:", e);
+      alert("Nao foi possivel criar o servico.");
+      return;
+    }
 
     novoServicoNome.value = "";
     novoServicoDuracao.value = "";
     novoServicoPreco.value = "";
 
-    renderServicos();
-    alert("Serviço adicionado ✅");
+    await renderServicos();
+    alert("Servico adicionado.");
   });
 }
-
-if (dataAdminInput) {
-  // 1️⃣ define a data inicial (se ainda não tiver)
-  if (!dataAdminInput.value) {
-    const hoje = new Date();
-    const yyyy = hoje.getFullYear();
-    const mm = String(hoje.getMonth() + 1).padStart(2, "0");
-    const dd = String(hoje.getDate()).padStart(2, "0");
-    dataAdminInput.value = `${yyyy}-${mm}-${dd}`;
-  }
-
-  // 2️⃣ primeira renderização (IMPORTANTE)
-  renderMapaDoDia(dataAdminInput.value);
-
-  // 3️⃣ re-renderiza quando o admin muda a data
-dataAdminInput.addEventListener("change", () => {
-  const dia = dataAdminInput.value;
-  renderMapaDoDia(dia);
-  //renderAgendamentosDoDia?.(dia);
-});
-
-
-}
-
-
-// ================== RENDER ==================
-function renderAgendamentos(dia) {
-  const listaAgendamentos = document.getElementById("listaAgendamentos");
-  if (!listaAgendamentos) return; // <- IMPORTANTE (você removeu do HTML)
-
-  const ags = carregarAgendamentosDoDia(dia).sort((a, b) => a.start - b.start);
-
-  if (!ags.length) {
-    listaAgendamentos.textContent = "Nenhum agendamento para este dia.";
+async function carregarFormExcecao(dia) {
+  let cfg;
+  try {
+    cfg = await carregarConfigDoDia(dia);
+  } catch (e) {
+    console.error("Erro buscando config:", e);
+    alert("Nao foi possivel carregar a configuracao do dia.");
     return;
   }
 
-  listaAgendamentos.innerHTML = "";
-
-  ags.forEach((ag, index) => {
-    const linha = document.createElement("div");
-    linha.style.display = "flex";
-    linha.style.justifyContent = "space-between";
-    linha.style.alignItems = "center";
-    linha.style.gap = "10px";
-    linha.style.padding = "10px 0";
-    linha.style.borderBottom = "1px solid #eee";
-
-    const info = document.createElement("div");
-    info.style.display = "flex";
-    info.style.flexDirection = "column";
-
-    const topo = document.createElement("strong");
-    topo.textContent = `${minutosParaHHMM(ag.start)} - ${minutosParaHHMM(ag.end)} | ${ag.servico || "Serviço"}`;
-
-    const baixo = document.createElement("span");
-    baixo.textContent = `${ag.nome || "Sem nome"} • ${ag.telefone || "Sem telefone"}`;
-
-    info.appendChild(topo);
-    info.appendChild(baixo);
-
-    const botoes = document.createElement("div");
-    botoes.style.display = "flex";
-    botoes.style.flexDirection = "column";
-    botoes.style.gap = "8px";
-
-    const btnEditar = document.createElement("button");
-    btnEditar.textContent = "Editar";
-    btnEditar.style.width = "auto";
-    btnEditar.style.padding = "6px 10px";
-
-    btnEditar.onclick = () => {
-      const novoNome = prompt("Nome do serviço:", s.nome);
-      if (!novoNome || !novoNome.trim()) return;
-
-      const novaDur = parseInt(prompt("Duração em minutos:", String(s.duracao)), 10);
-      if (!novaDur || novaDur < 10) {
-        alert("Duração inválida.");
-        return;
-      }
-
-      s.nome = novoNome.trim();
-      s.duracao = novaDur;
-
-      salvarServicos(servicos);
-      renderServicos();
-      alert("Serviço atualizado ✅");
-    };
-
-    // Confirmar individual (WhatsApp)
-    const btnConfirmar = document.createElement("button");
-    btnConfirmar.textContent = "Confirmar (WhatsApp)";
-    btnConfirmar.style.width = "auto";
-    btnConfirmar.style.padding = "6px 10px";
-    btnConfirmar.style.marginTop = "0";
-
-    btnConfirmar.onclick = () => {
-      const url = abrirConfirmacaoWhatsApp(dia, ag);
-      if (!url) {
-        alert("Este agendamento está sem telefone do cliente.");
-        return;
-      }
-      window.open(url, "_blank");
-    };
-
-    // Apagar
-    const btnApagar = document.createElement("button");
-    btnApagar.textContent = "Apagar";
-    btnApagar.style.width = "auto";
-    btnApagar.style.padding = "6px 10px";
-    btnApagar.style.marginTop = "0";
-
-    btnApagar.onclick = () => {
-      const ok = confirm(
-        `Apagar agendamento de ${ag.nome || "cliente"} (${ag.servico || "serviço"}) às ${minutosParaHHMM(ag.start)} do dia ${dia}?`
-      );
-      if (!ok) return;
-
-      const listaAtual = carregarAgendamentosDoDia(dia);
-      listaAtual.splice(index, 1);
-      localStorage.setItem(keyAgendamentos(dia), JSON.stringify(listaAtual));
-
-      renderAgendamentos(dia);
-      alert("Agendamento apagado ✅");
-    };
-
-    botoes.appendChild(btnConfirmar);
-    botoes.appendChild(btnApagar);
-
-    linha.appendChild(info);
-    linha.appendChild(botoes);
-    listaAgendamentos.appendChild(linha);
-  });
+  diaFechadoSelect.value = cfg.fechado ? "sim" : "nao";
+  inicioAtendimentoInput.value = minutosParaHHMM(cfg.diaInicio);
+  fimAtendimentoInput.value = minutosParaHHMM(cfg.diaFim);
+  inicioAlmocoInput.value = minutosParaHHMM(cfg.almocoInicio);
+  fimAlmocoInput.value = minutosParaHHMM(cfg.almocoFim);
 }
-
-function carregarForm(dia) {
-  const cfg = carregarConfigDoDia(dia);
+async function carregarForm(dia) {
+  if (typeof dataHorario !== "undefined" && dataHorario) { dataHorario.value = dia; }
+  let cfg;
+  try {
+    cfg = await carregarConfigDoDia(dia);
+  } catch (e) {
+    console.error("Erro buscando config:", e);
+    alert("Nao foi possivel carregar a configuracao do dia.");
+    return;
+  }
 
   diaFechadoSelect.value = cfg.fechado ? "sim" : "nao";
   inicioAtendimentoInput.value = minutosParaHHMM(cfg.diaInicio);
@@ -745,29 +892,392 @@ function carregarForm(dia) {
   inicioAlmocoInput.value = minutosParaHHMM(cfg.almocoInicio);
   fimAlmocoInput.value = minutosParaHHMM(cfg.almocoFim);
 
-  renderMapaDoDia(dia);
+  await renderMapaDoDia(dia);
 }
 
-btnVerAgendamentos?.addEventListener("click", () => {
-  const aberto = painelAgendamentos.style.display === "block";
-  painelAgendamentos.style.display = aberto ? "none" : "block";
 
-  // quando abrir, renderiza a lista do dia atual
-  if (!aberto) {
-    const dia = document.getElementById("dataAdmin")?.value;
-    if (dia) renderAgendamentos?.(dia);
+if (btnLimparAgendamentos) {
+  btnLimparAgendamentos.addEventListener("click", () => limparAgendamentos());
+}
+const calendarioCache = new Map();
+let calendarioMesAtual = new Date();
+calendarioMesAtual.setDate(1);
+
+function formatYYYYMM(dateObj) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
+function formatYYYYMMDD(y, m, d) {
+  const mm = String(m).padStart(2, "0");
+  const dd = String(d).padStart(2, "0");
+  return `${y}-${mm}-${dd}`;
+}
+
+function nomeMes(idx) {
+  const nomes = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  return nomes[idx] || "";
+}
+
+async function carregarResumoMes(ano, mes) {
+  const chave = `${ano}-${String(mes).padStart(2, "0")}`;
+  if (calendarioCache.has(chave)) return calendarioCache.get(chave);
+
+  const resp = await fetch(`/api/bookings/summary?month=${encodeURIComponent(chave)}`, {
+    cache: "no-store"
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json = await resp.json();
+  const dias = Array.isArray(json?.days) ? json.days : [];
+  calendarioCache.set(chave, dias);
+  return dias;
+}
+
+function corPorQuantidade(info) {
+  const status = info?.status;
+  if (status === "closed") return "#e5e7eb";
+  if (status === "full") return "#f87171";
+  if (status === "free") return "#86efac";
+  const qtd = Number(info?.count || 0);
+  if (qtd > 0) return "#86efac";
+  return "#e5e7eb";
+}
+
+async function renderAgendaDetalhe(dia, anchorEl) {
+  if (!agendaDetalheTitulo || !agendaDetalheLista || !agendaDetalhePopover) return;
+
+  if (!dia) {
+    agendaDetalhePopover.style.display = "none";
+    agendaDetalheTitulo.textContent = "Selecione um dia";
+    agendaDetalheLista.innerHTML = "";
+    return;
   }
-});
 
+  agendaDetalheTitulo.textContent = `Dia ${dataParaBR(dia)}`;
+  agendaDetalheLista.innerHTML = "";
+  agendaDetalhePopover.style.display = "block";
+
+  if (agendaMensal && anchorEl) {
+    const contRect = agendaMensal.getBoundingClientRect();
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const popWidth = agendaDetalhePopover.offsetWidth || 260;
+    const popHeight = agendaDetalhePopover.offsetHeight || 180;
+
+    let left = anchorRect.left - contRect.left;
+    let top = anchorRect.bottom - contRect.top + 8;
+
+    if (top + popHeight > contRect.height) {
+      top = anchorRect.top - contRect.top - popHeight - 8;
+    }
+
+    const maxLeft = contRect.width - popWidth - 8;
+    left = Math.max(8, Math.min(left, maxLeft));
+    top = Math.max(8, top);
+
+    agendaDetalhePopover.style.left = `${left}px`;
+    agendaDetalhePopover.style.top = `${top}px`;
+  }
+
+  let ags = [];
+  try {
+    ags = await carregarAgendamentosDoDia(dia);
+  } catch (e) {
+    agendaDetalheLista.textContent = "Erro ao carregar agendamentos.";
+    return;
+  }
+
+  if (!ags.length) {
+    agendaDetalheLista.textContent = "Sem agendamentos.";
+    return;
+  }
+
+  ags.sort((a, b) => a.start - b.start);
+  const lista = document.createElement("div");
+  lista.style.display = "flex";
+  lista.style.flexDirection = "column";
+  lista.style.gap = "6px";
+
+  ags.forEach((ag) => {
+    const linha = document.createElement("div");
+    linha.style.display = "flex";
+    linha.style.flexDirection = "column";
+
+    const topo = document.createElement("strong");
+    topo.textContent = `${minutosParaHHMM(ag.start)}  ${ag.nome || "Cliente"}`;
+
+    const sub = document.createElement("span");
+    sub.textContent = ag.servico || "Servico";
+    sub.style.opacity = "0.85";
+
+    linha.appendChild(topo);
+    linha.appendChild(sub);
+    lista.appendChild(linha);
+  });
+
+  agendaDetalheLista.appendChild(lista);
+}
+
+async function renderCalendarioMes() {
+  if (!calendarioGrid) return;
+
+  const ano = calendarioMesAtual.getFullYear();
+  const mes = calendarioMesAtual.getMonth();
+  const label = `${nomeMes(mes)} ${ano}`;
+  if (labelMesAtual) labelMesAtual.textContent = label;
+
+  calendarioGrid.innerHTML = "";
+  calendarioGrid.style.display = "grid";
+  calendarioGrid.style.gridTemplateColumns = "repeat(7, 1fr)";
+  calendarioGrid.style.gap = "6px";
+
+  const diasSemana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"];
+  diasSemana.forEach((d) => {
+    const h = document.createElement("div");
+    h.textContent = d;
+    h.style.fontWeight = "bold";
+    h.style.fontSize = "12px";
+    calendarioGrid.appendChild(h);
+  });
+
+  let resumo = [];
+  try {
+    resumo = await carregarResumoMes(ano, mes + 1);
+  } catch (e) {
+    console.error("Erro carregando resumo mensal:", e);
+  }
+
+  const mapa = {};
+  resumo.forEach((r) => {
+    if (!r?.day) return;
+    mapa[r.day] = { count: Number(r.count || 0), status: r.status };
+  });
+
+  const primeiroDia = new Date(ano, mes, 1);
+  const startDow = primeiroDia.getDay();
+  const totalDias = new Date(ano, mes + 1, 0).getDate();
+
+  for (let i = 0; i < startDow; i++) {
+    const vazio = document.createElement("div");
+    calendarioGrid.appendChild(vazio);
+  }
+
+  for (let d = 1; d <= totalDias; d++) {
+    const dayStr = formatYYYYMMDD(ano, mes + 1, d);
+    const info = mapa[dayStr] || { count: 0 };
+    const qtd = info.count;
+
+    const cell = document.createElement("div");
+    cell.setAttribute("data-day", dayStr);
+    cell.style.border = "1px solid #eee";
+    cell.style.borderRadius = "8px";
+    cell.style.padding = "6px";
+    cell.style.cursor = "pointer";
+    cell.style.minHeight = "44px";
+    cell.style.background = "#fff";
+
+    const diaEl = document.createElement("div");
+    diaEl.textContent = String(d);
+    diaEl.style.fontWeight = "bold";
+
+    const dot = document.createElement("span");
+    dot.style.display = "inline-block";
+    dot.style.width = "8px";
+    dot.style.height = "8px";
+    dot.style.borderRadius = "50%";
+    dot.style.background = corPorQuantidade(info);
+    dot.style.marginTop = "6px";
+
+    const qtdEl = document.createElement("div");
+    qtdEl.style.fontSize = "11px";
+    qtdEl.style.color = "#666";
+    qtdEl.textContent = qtd ? `${qtd} ag.` : "";
+
+    cell.appendChild(diaEl);
+    cell.appendChild(dot);
+    cell.appendChild(qtdEl);
+
+    calendarioGrid.appendChild(cell);
+  }
+}
+
+if (agendaDetalheFechar) {
+  agendaDetalheFechar.addEventListener("click", () => {
+    if (agendaDetalhePopover) agendaDetalhePopover.style.display = "none";
+  });
+}
+
+if (calendarioGrid) {
+  calendarioGrid.addEventListener("click", async (e) => {
+    const alvo = e.target?.closest("[data-day]");
+    if (!alvo) return;
+    const day = alvo.getAttribute("data-day");
+    if (!day) return;
+    if (dataAdmin) dataAdmin.value = day;
+    await renderAgendaDetalhe(day, alvo);
+    await carregarForm(day);
+  });
+}
+
+if (btnMesPrev) {
+  btnMesPrev.addEventListener("click", async () => {
+    calendarioMesAtual.setMonth(calendarioMesAtual.getMonth() - 1);
+    calendarioMesAtual.setDate(1);
+    await renderCalendarioMes();
+  });
+}
+
+if (btnMesNext) {
+  btnMesNext.addEventListener("click", async () => {
+    calendarioMesAtual.setMonth(calendarioMesAtual.getMonth() + 1);
+    calendarioMesAtual.setDate(1);
+    await renderCalendarioMes();
+  });
+}
+
+async function carregarDiasDescanso() {
+  if (!semanaDescanso) return;
+  let days = [];
+  try {
+    const resp = await fetch("/api/weekly-closed", { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const json = await resp.json();
+    days = Array.isArray(json?.days) ? json.days : [];
+  } catch (e) {
+    console.error("Erro ao carregar dias de descanso:", e);
+    return;
+  }
+
+  const set = new Set(days.map((d) => Number(d)));
+  semanaDescanso.querySelectorAll("input[data-weekday]").forEach((el) => {
+    const day = Number(el.getAttribute("data-weekday"));
+    el.checked = set.has(day);
+  });
+}
+
+async function salvarDiasDescanso(silent = false) {
+  if (!semanaDescanso) return false;
+  const days = Array.from(semanaDescanso.querySelectorAll("input[data-weekday]"))
+    .filter((el) => el.checked)
+    .map((el) => Number(el.getAttribute("data-weekday")))
+    .filter((d) => Number.isFinite(d));
+
+  try {
+    const resp = await fetch("/api/weekly-closed", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days })
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
+  } catch (e) {
+    console.error("Erro ao salvar dias de descanso:", e);
+    if (!silent) alert("Nao foi possivel salvar os dias de descanso.");
+    return false;
+  }
+
+  if (!silent) alert("Dias de descanso salvos.");
+  if (painelAgendamentos && painelAgendamentos.style.display === "block") {
+    await renderCalendarioMes();
+  }
+  return true;
+}function hojeYYYYMMDD() {
+  const hoje = new Date();
+  const y = hoje.getFullYear();
+  const m = String(hoje.getMonth() + 1).padStart(2, "0");
+  const d = String(hoje.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+async function renderConfigsFechadas() {
+  if (!listaFechadosForaPadrao) return;
+  listaFechadosForaPadrao.innerHTML = "";
+
+  let configs = [];
+  try {
+    const resp = await fetch("/api/day-settings?limit=200", { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const json = await resp.json();
+    configs = Array.isArray(json?.configs) ? json.configs : [];
+  } catch (e) {
+    console.error("Erro ao carregar configs:", e);
+    listaFechadosForaPadrao.textContent = "Erro ao carregar configs.";
+    return;
+  }
+
+  const hojeStr = hojeYYYYMMDD();
+  const fechados = configs.filter((c) => c?.fechado && c?.day && c.day >= hojeStr);
+
+  if (!fechados.length) {
+    listaFechadosForaPadrao.textContent = "Nenhum dia fechado futuro.";
+    return;
+  }
+
+  fechados.sort((a, b) => String(a.day).localeCompare(String(b.day)));
+  fechados.forEach((c) => {
+    const linha = document.createElement("div");
+    linha.style.display = "flex";
+    linha.style.justifyContent = "space-between";
+    linha.style.alignItems = "center";
+    linha.style.borderBottom = "1px solid #eee";
+    linha.style.padding = "8px 0";
+
+    const info = document.createElement("div");
+    info.textContent = `Fechado: ${dataParaBR(c.day)}`;
+
+    const btn = document.createElement("button");
+    btn.textContent = "Abrir";
+    btn.style.width = "auto";
+    btn.style.padding = "6px 10px";
+
+    btn.onclick = async () => {
+      const ok = confirm(`Marcar o dia ${dataParaBR(c.day)} como aberto?`);
+      if (!ok) return;
+      try {
+        const payload = {
+          day: c.day,
+          fechado: false,
+          diaInicio: Number(c.diaInicio ?? 480),
+          diaFim: Number(c.diaFim ?? 1020),
+          almocoInicio: Number(c.almocoInicio ?? 720),
+          almocoFim: Number(c.almocoFim ?? 780)
+        };
+        const resp = await fetch("/api/day-settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const json = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
+      } catch (e) {
+        console.error("Erro ao abrir dia:", e);
+        alert("Nao foi possivel abrir este dia.");
+        return;
+      }
+      await renderConfigsFechadas();
+      await refreshCalendario();
+    };
+
+    linha.appendChild(info);
+    linha.appendChild(btn);
+    listaFechadosForaPadrao.appendChild(linha);
+  });
+}
 // ================== LOGIN ==================
-btnEntrarAdmin.addEventListener("click", () => {
+btnEntrarAdmin.addEventListener("click", async () => {
   if (adminSenha.value !== senhaAdminConfig) {
     alert("Senha incorreta.");
     return;
   }
 
   adminConteudo.style.display = "block";
-  carregarForm(dataAdmin.value);
+  await carregarForm(dataAdmin.value);
+  await carregarDiasDescanso();
+  await carregarHorarioPadrao();
+  await renderConfigsFechadas();
+  if (painelAgendamentos && painelAgendamentos.style.display === "block") {
+    await renderCalendarioMes();
+  }
 });
 
 renderServicos();
@@ -786,16 +1296,31 @@ renderServicos();
 })();
 
 // Mudar data no admin
-dataAdmin.addEventListener("change", () => {
+dataAdmin.addEventListener("change", async () => {
   if (adminConteudo.style.display === "block") {
-    carregarForm(dataAdmin.value);
+    await carregarForm(dataAdmin.value);
+    if (painelAgendamentos && painelAgendamentos.style.display === "block") {
+      await renderCalendarioMes();
+    }
   }
 });
+if (dataHorario) {
+  dataHorario.addEventListener("change", async () => {
+    if (!dataHorario.value) return;
+    if (adminConteudo.style.display === "block") {
+      await carregarFormExcecao(dataHorario.value);
+    }
+  });
+}
 
 // ================== SALVAR CONFIG ==================
-btnSalvarConfig.addEventListener("click", () => {
-  const dia = dataAdmin.value;
+btnSalvarConfig.addEventListener("click", async () => {
+  const dia = dataHorario ? dataHorario.value : "";
   if (!dia) {
+    alert("Selecione a data no campo Configurar dia.");
+    return;
+  }
+    if (!dia) {
     alert("Selecione a data.");
     return;
   }
@@ -808,52 +1333,86 @@ btnSalvarConfig.addEventListener("click", () => {
   const almFim = hhmmParaMinutos(fimAlmocoInput.value);
 
   if (ini == null || fim == null || almIni == null || almFim == null) {
-    alert("Preencha todos os horários.");
+    alert("Preencha todos os horarios.");
     return;
   }
   if (ini >= fim) {
-    alert("Início precisa ser antes do fim.");
+    alert("Inicio precisa ser antes do fim.");
     return;
   }
   if (almIni > almFim) {
-    alert("Almoço inválido (ou coloque igual para desativar).");
+    alert("Almoco invalido (ou coloque igual para desativar).");
     return;
   }
 
-  salvarConfigDoDia(dia, {
-    fechado,
-    diaInicio: ini,
-    diaFim: fim,
-    almocoInicio: almIni,
-    almocoFim: almFim
-  });
+  if (fechado) {
+    try {
+      const ags = await carregarAgendamentosDoDia(dia);
+      if (ags.length) {
+        const ok = confirm("Existem agendamentos neste dia. Deseja manter fechado mesmo assim?");
+        if (!ok) return;
+      }
+    } catch (e) {
+      console.error("Erro verificando agendamentos:", e);
+    }
+  }
 
-  alert("Configuração salva ✅");
-  carregarForm(dia);
+  try {
+    await salvarConfigDoDia(dia, {
+      fechado,
+      diaInicio: ini,
+      diaFim: fim,
+      almocoInicio: almIni,
+      almocoFim: almFim
+    });
+  } catch (e) {
+    console.error("Erro salvando config:", e);
+    alert("Nao foi possivel salvar a configuracao.");
+    return;
+  }
+
+  alert("Configuracao salva.");
+  await renderConfigsFechadas();
+  await refreshCalendario();
 });
+if (btnSalvarPadraoCompleto) {
+  btnSalvarPadraoCompleto.addEventListener("click", salvarPadraoCompleto);
+}
 
 // ================== CONFIRMAR TODOS ==================
 if (btnConfirmarTodos) {
-  btnConfirmarTodos.addEventListener("click", () => {
+    btnConfirmarTodos.addEventListener("click", async () => {
     if (adminConteudo.style.display !== "block") {
       alert("Entre no admin primeiro.");
       return;
     }
 
-    const dia = dataAdmin.value;
+    const dia = (dataHorario && dataHorario.value) ? dataHorario.value : dataAdmin.value;
     if (!dia) {
       alert("Selecione uma data.");
       return;
     }
 
-    const ags = carregarAgendamentosDoDia(dia).sort((a, b) => a.start - b.start);
+    let ags = [];
+    try {
+      ags = await carregarAgendamentosDoDia(dia);
+    } catch (e) {
+      console.error("Erro buscando agendamentos:", e);
+      alert("Nao foi possivel carregar os agendamentos.");
+      return;
+    }
+    ags.sort((a, b) => a.start - b.start);
     if (!ags.length) {
-      alert("Não há agendamentos neste dia.");
+      alert("Nao ha agendamentos neste dia.");
       return;
     }
 
     const ok = confirm(
-      `Vou abrir confirmações no WhatsApp para este dia.\n\nDica: permita pop-ups.\n\nContinuar?`
+      `Vou abrir confirmacoes no WhatsApp para este dia.
+
+Dica: permita pop-ups.
+
+Continuar?`
     );
     if (!ok) return;
 
@@ -866,8 +1425,11 @@ if (btnConfirmarTodos) {
     function abrirProximo() {
       if (i >= ags.length) {
         alert(
-          `Confirmações prontas ✅\n\n` +
-          `Abertos no WhatsApp: ${enviados}\n` +
+          `Confirmacoes prontas.
+
+` +
+          `Abertos no WhatsApp: ${enviados}
+` +
           `Sem telefone (pulados): ${semTelefone}`
         );
         return;

@@ -231,6 +231,141 @@ button {
 }
 .btn-toggle:active { transform: scale(0.99); }
 
+.btn-sub {
+  max-width: 470px;
+  background: #d58ea4;
+}
+
+.btn-sub:hover {
+  background: #c57a93;
+}
+
+/* =========================
+   ADMIN - CONFIGURAR HORARIOS
+   ========================= */
+.horarios-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.horarios-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1.7fr;
+  gap: 12px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.card {
+  background: #fff7fa;
+  border: 1px solid #f0d6de;
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+  width: 100%;
+}
+
+.fechados-lista > div {
+  padding: 10px 0;
+  gap: 10px;
+}
+
+.fechados-lista button {
+  margin-left: 8px;
+}
+
+.card-title {
+  font-weight: bold;
+  color: #5a2a36;
+  margin-bottom: 6px;
+}
+
+.card-sub {
+  font-size: 12px;
+  color: #7c5660;
+  margin-bottom: 10px;
+}
+
+.card-hint {
+  font-size: 12px;
+  color: #7c5660;
+  margin-top: 10px;
+}
+
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0 12px;
+}
+
+.weekdays label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-top: 0;
+  font-size: 13px;
+  color: #5f3b45;
+}
+
+.btn-ghost {
+  background: #f3d7df;
+  color: #5a2a36;
+}
+
+.btn-ghost:hover {
+  background: #efc7d2;
+}
+
+.row-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.row-2 label {
+  font-size: 13px;
+}
+
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid #f0d6de;
+  border-bottom: 1px solid #f0d6de;
+  margin: 8px 0 4px;
+}
+
+.toggle-title {
+  font-weight: 600;
+  color: #5a2a36;
+}
+
+.toggle-sub {
+  font-size: 12px;
+  color: #7c5660;
+}
+
+.toggle-select {
+  max-width: 110px;
+  margin-top: 0;
+}
+
+@media (max-width: 520px) {
+  .horarios-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* =========================
    ADMIN - MOBILE (tela cheia e central)
    ========================= */

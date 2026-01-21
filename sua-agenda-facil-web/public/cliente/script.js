@@ -1,27 +1,26 @@
-﻿
 // ======== ELEMENTOS DA TELA ========
 const horariosDiv = document.getElementById("horarios");
 const servicoSelect = document.getElementById("servico");
 const dataInput = document.getElementById("data");
 const tituloPagina = document.getElementById("tituloPagina");
-const modalConfirmacao = document.getElementById("modalConfirmacao");
-const modalTexto = document.getElementById("modalTexto");
-const novoServicoPreco = document.getElementById("novoServicoPreco");
 
-
-// ======= TÍTULO vindo do config.js =======
-const nomePagina = window.APP_CONFIG?.nomePagina || "Sua Agenda Fácil";
-tituloPagina.textContent = nomePagina;
+// ======= TITULO vindo do config.js =======
+const nomePagina = window.APP_CONFIG?.nomePagina || "Sua Agenda Facil";
+if (tituloPagina) tituloPagina.textContent = nomePagina;
 document.title = nomePagina;
 
-// ======== CONFIG PADRÃO ========
+// ======== CONFIG PADRAO ========
 const padrao = {
-  diaInicio: 8 * 60,     // 08:00
-  diaFim: 17 * 60,       // 17:00
-  almocoInicio: 12 * 60, // 12:00
-  almocoFim: 13 * 60,    // 13:00
+  diaInicio: 8 * 60,
+  diaFim: 17 * 60,
+  almocoInicio: 12 * 60,
+  almocoFim: 13 * 60,
   passoMinutos: 30
 };
+
+let agendamentoPendente = null;
+let gerarHorariosSeq = 0;
+let diasDescansoSemana = null;
 
 // ======== HELPERS ========
 function parseYYYYMMDD(s) {
@@ -29,28 +28,9 @@ function parseYYYYMMDD(s) {
   return new Date(Date.UTC(y, m - 1, d));
 }
 
-function formatarDataBR(diaYYYYMMDD) {
-  return (diaYYYYMMDD || "").split("-").reverse().join("/");
-}
-
-function formatarPrecoBR(v) {
-  const n = Number(v || 0);
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function minutosParaHHMM(minutos) {
-  const h = Math.floor(minutos / 60);
-  const m = minutos % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
-function intervalosConflitam(aStart, aEnd, bStart, bEnd) {
-  return aStart < bEnd && aEnd > bStart;
-}
-
 function diaSemanaPermitidoUTC(dateObjUTC) {
-  const d = dateObjUTC.getUTCDay(); // 0=Dom,1=Seg,2=Ter...
-  return d >= 2 && d <= 6; // Terça a Sábado
+  const d = dateObjUTC.getUTCDay();
+  return d >= 2 && d <= 6; // Tue-Sat
 }
 
 function proximaDataPermitidaLocal() {
@@ -65,30 +45,27 @@ function proximaDataPermitidaLocal() {
   }
 }
 
-function keyAgendamentos(dia) {
-  return `agendamentos:${dia}`;
+function formatarDataBR(dia) {
+  return dia.split("-").reverse().join("/");
 }
 
-function keyConfigDia(dia) {
-  return `configDia:${dia}`;
+function minutosParaHHMM(minutos) {
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-function carregarAgendamentosDoDia(dia) {
-  return JSON.parse(localStorage.getItem(keyAgendamentos(dia))) || [];
+function ajustarInicioParaPasso(minutos, passo) {
+  if (!Number.isFinite(minutos) || !Number.isFinite(passo) || passo <= 0) {
+    return minutos;
+  }
+  const resto = minutos % passo;
+  if (resto === 0) return minutos;
+  return minutos + (passo - resto);
 }
 
-function salvarAgendamentosDoDia(dia, lista) {
-  localStorage.setItem(keyAgendamentos(dia), JSON.stringify(lista));
-}
-
-function carregarConfigDoDia(dia) {
-  return JSON.parse(localStorage.getItem(keyConfigDia(dia))) || {
-    fechado: false,
-    diaInicio: padrao.diaInicio,
-    diaFim: padrao.diaFim,
-    almocoInicio: padrao.almocoInicio,
-    almocoFim: padrao.almocoFim
-  };
+function intervalosConflitam(aStart, aEnd, bStart, bEnd) {
+  return aStart < bEnd && aEnd > bStart;
 }
 
 function estaDisponivel(start, end, agendamentos, config) {
@@ -104,206 +81,228 @@ function estaDisponivel(start, end, agendamentos, config) {
   return true;
 }
 
-function servicoTextoSelecionado() {
+function normalizarTelefoneBR(telefoneRaw) {
+  if (!telefoneRaw || !telefoneRaw.trim()) return null;
 
-  // pega o texto visível do option selecionado
-  return servicoSelect.options[servicoSelect.selectedIndex]?.text || "Serviço";
+  let telefone = telefoneRaw.replace(/\D/g, "");
+  telefone = telefone.replace(/^0+/, "");
+
+  if (telefone.startsWith("55")) {
+    return telefone;
+  }
+
+  if (telefone.length === 10 || telefone.length === 11) {
+    return "55" + telefone;
+  }
+
+  return null;
 }
 
-
-// ======== SERVIÇOS (CLIENTE) ========
-
-function keyServicos() {
-  const slug = window.APP_CONFIG?.slug || "default";
-  return `servicos:${slug}`;
+// ======== API ========
+async function carregarConfigDoDia(dia) {
+  const resp = await fetch(`/api/day-settings?date=${encodeURIComponent(dia)}`, {
+    cache: "no-store"
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json = await resp.json();
+  if (!json?.config) throw new Error("Config not found");
+  return { config: json.config, meta: json.meta || { exists: false } };
 }
 
-function servicosPadrao() {
-  return [
-    { nome: "Pé", duracao: 50, preco: 0 },
-    { nome: "Mão", duracao: 60, preco: 0 },
-    { nome: "Pé + Mão", duracao: 120, preco: 0 }
-  ];
+async function carregarDiasDescansoCliente() {
+  const resp = await fetch("/api/weekly-closed", { cache: "no-store" });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json = await resp.json();
+  const days = Array.isArray(json?.days) ? json.days : [];
+  return new Set(days.map((d) => Number(d)));
 }
 
-function carregarServicos() {
-  const raw = localStorage.getItem(keyServicos());
-  const s = raw ? JSON.parse(raw) : null;
-  const lista = Array.isArray(s) && s.length ? s : servicosPadrao();
+async function carregarBookingsAPI(dia) {
+  const resp = await fetch(`/api/bookings?date=${encodeURIComponent(dia)}`, {
+    cache: "no-store"
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json = await resp.json();
+  const lista = Array.isArray(json?.bookings) ? json.bookings : [];
 
-  return lista.map(item => ({
-    nome: item.nome,
-    duracao: Number(item.duracao || 0),
-    preco: Number(item.preco || 0)
-  })).filter(item => item.nome && item.duracao > 0);
+  return lista
+    .filter((b) => b?.status !== "canceled")
+    .map((b) => ({
+      id: b?.id ?? null,
+      start: Number(b?.start_min),
+      end: Number(b?.end_min),
+      nome: b?.client_name ?? null,
+      telefone: b?.client_phone ?? null,
+      servico: b?.service_name ?? b?.service_id ?? null,
+      status: b?.status ?? null
+    }))
+    .filter((b) => Number.isFinite(b.start) && Number.isFinite(b.end));
 }
 
+async function carregarServicosAPI() {
+  const resp = await fetch("/api/services", { cache: "no-store" });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json = await resp.json();
+  const services = Array.isArray(json.services) ? json.services : [];
+
+  return services
+    .filter((s) => s.active !== false)
+    .map((s) => ({
+      id: s.id,
+      nome: s.name,
+      duracao: Number(s.duration_minutes || 0),
+      preco: Number(s.price_cents || 0) / 100
+    }))
+    .filter((s) => s.nome && s.duracao > 0);
+}
+
+// ======== UI ========
 async function renderSelectServicos() {
   if (!servicoSelect) return;
-
-  // feedback
-  servicoSelect.innerHTML = `<option>Carregando serviços...</option>`;
+  servicoSelect.innerHTML = "<option>Carregando servicos...</option>";
 
   try {
-    const lista = await carregarServicosAPI(); // deve retornar [{nome,duracao,preco}, ...]
-
-    // se veio vazio
+    const lista = await carregarServicosAPI();
     if (!Array.isArray(lista) || lista.length === 0) {
-      servicoSelect.innerHTML = `<option value="">Nenhum serviço cadastrado</option>`;
+      servicoSelect.innerHTML = "<option value=\"\">Nenhum servico cadastrado</option>";
       return;
     }
 
     servicoSelect.innerHTML = "";
-
     lista.forEach((s) => {
-      // segurança
       const dur = Number(s.duracao || 0);
       if (!dur) return;
 
       const opt = document.createElement("option");
       opt.value = String(dur);
-      opt.textContent = `${s.nome} (${dur} min) — ${formatarPrecoBR(Number(s.preco || 0))}`;
+      opt.dataset.serviceId = s.id ? String(s.id) : "";
+      opt.textContent = `${s.nome} (${dur} min) - ${formatarPrecoBR(s.preco)}`;
       servicoSelect.appendChild(opt);
     });
 
-    // garante que tem algo selecionado
     if (!servicoSelect.value && servicoSelect.options.length) {
       servicoSelect.selectedIndex = 0;
     }
   } catch (e) {
-    console.error("Erro ao carregar serviços:", e);
-    servicoSelect.innerHTML = `<option value="">Erro ao carregar serviços</option>`;
+    console.error("Erro ao carregar servicos:", e);
+    servicoSelect.innerHTML = "<option value=\"\">Erro ao carregar servicos</option>";
   }
 }
 
-// init correto
-(async function initServicosEHorarios() {
-  await renderSelectServicos();
-  gerarHorarios();
-})();
-
-// quando trocar serviço, recalcula horários
-if (servicoSelect) {
-  servicoSelect.addEventListener("change", gerarHorarios);
+function formatarPrecoBR(v) {
+  const n = Number(v || 0);
+  return n.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL"
+  });
 }
 
-
-
-
-
-// ======== PRINCIPAL ========
 async function gerarHorarios() {
   if (!horariosDiv) return;
+  const seq = ++gerarHorariosSeq;
   horariosDiv.innerHTML = "";
 
   const dia = dataInput?.value;
   const duracao = parseInt(servicoSelect?.value || "0", 10);
 
   if (!dia) {
-    horariosDiv.textContent = "Selecione uma data para ver os horários.";
+    horariosDiv.textContent = "Selecione uma data para ver os horarios.";
     return;
   }
 
   const dateObjUTC = parseYYYYMMDD(dia);
   if (!diaSemanaPermitidoUTC(dateObjUTC)) {
-    horariosDiv.textContent = "Atendimento somente de terça a sábado. Escolha outra data.";
+    horariosDiv.textContent = "Atendimento somente de terca a sabado.";
     return;
   }
 
   if (!duracao || duracao <= 0) {
-    horariosDiv.textContent = "Selecione um serviço.";
+    horariosDiv.textContent = "Selecione um servico.";
     return;
   }
 
-  // 1) Busca config do dia na API
   let config;
+  let configMeta;
   try {
-    const r1 = await fetch(`/api/day-settings?date=${encodeURIComponent(dia)}`);
-    if (r1.ok) {
-      const j1 = await r1.json();
-      config = j1?.config;
-    }
+    const cfg = await carregarConfigDoDia(dia);
+    config = cfg.config;
+    configMeta = cfg.meta;
   } catch (e) {
     console.error("Erro buscando config:", e);
-  }
-
-  // fallback (caso API falhe)
-  if (!config) config = carregarConfigDoDia(dia);
-
-  if (config.fechado) {
-    horariosDiv.textContent = "Este dia está fechado (sem atendimento).";
+    horariosDiv.textContent = "Erro ao carregar configuracao do dia.";
     return;
   }
 
-  // 2) Busca agendamentos do dia na API
-  let agendamentos = [];
-  try {
-    const r2 = await fetch(`/api/bookings?date=${encodeURIComponent(dia)}`);
-    const j2 = await r2.json();
-    agendamentos = Array.isArray(j2?.bookings) ? j2.bookings : [];
-  } catch (e) {
-    console.error("Erro buscando bookings:", e);
+  if (seq !== gerarHorariosSeq) return;
+
+  if (config.fechado) {
+    horariosDiv.textContent = "Este dia esta fechado.";
+    return;
   }
 
-  // fallback (caso API falhe)
-  if (!agendamentos.length) agendamentos = carregarAgendamentosDoDia(dia);
+  if (
+    !configMeta?.exists &&
+    diasDescansoSemana &&
+    diasDescansoSemana.has(parseYYYYMMDD(dia).getUTCDay())
+  ) {
+    horariosDiv.textContent = "Este dia esta fechado.";
+    return;
+  }
+
+  let agendamentos = [];
+  try {
+    agendamentos = await carregarBookingsAPI(dia);
+  } catch (e) {
+    console.error("Erro buscando bookings:", e);
+    horariosDiv.textContent = "Erro ao carregar agendamentos do dia.";
+    return;
+  }
+
+  if (seq !== gerarHorariosSeq) return;
 
   let achou = false;
-
-  for (let start = config.diaInicio; start < config.diaFim; start += padrao.passoMinutos) {
+  const passo = padrao.passoMinutos;
+  let start = ajustarInicioParaPasso(config.diaInicio, passo);
+  for (; start + duracao <= config.diaFim; start += passo) {
     const end = start + duracao;
 
     if (!estaDisponivel(start, end, agendamentos, config)) continue;
 
+    const slotStart = start;
+    const slotEnd = end;
+
     achou = true;
     const botao = document.createElement("button");
-    botao.textContent = `${minutosParaHHMM(start)} (até ${minutosParaHHMM(end)})`;
+    botao.textContent = `${minutosParaHHMM(slotStart)} (ate ${minutosParaHHMM(slotEnd)})`;
 
     botao.onclick = () => {
       document
         .querySelectorAll(".horarios button.selecionado")
-        .forEach(b => b.classList.remove("selecionado"));
+        .forEach((b) => b.classList.remove("selecionado"));
 
       botao.classList.add("selecionado");
-      agendar(dia, start, end, duracao);
+      agendar(dia, slotStart, slotEnd, duracao);
     };
 
     horariosDiv.appendChild(botao);
   }
 
   if (!achou) {
-    horariosDiv.textContent = "Nenhum horário disponível para esse serviço nessa data.";
+    horariosDiv.textContent = "Nenhum horario disponivel para esse servico nessa data.";
   }
 }
 
-// guarda o "agendamento pendente" enquanto o modal está aberto
-let agendamentoPendente = null;
-
-
-
 function agendar(dia, start, end, duracao) {
-  const config = carregarConfigDoDia(dia);
-  const servico = servicoTextoSelecionado();
-  const agendamentos = carregarAgendamentosDoDia(dia);
-
-  // evita corrida: se alguém agendou "no meio tempo"
-  if (!estaDisponivel(start, end, agendamentos, config)) {
-    alert("Esse horário acabou de ficar indisponível. Escolha outro.");
-    gerarHorarios();
-    return;
-  }
-
+  const servico = servicoSelect?.options[servicoSelect.selectedIndex]?.text || "Servico";
   const dataBR = formatarDataBR(dia);
   const horaInicio = minutosParaHHMM(start);
   const horaFim = minutosParaHHMM(end);
 
-  // guarda dados para confirmar depois
   agendamentoPendente = { dia, start, end, duracao, servico, dataBR, horaInicio, horaFim };
-
-  // abre modal
   abrirModalConfirmacao(agendamentoPendente);
 }
-function abrirModalConfirmacao({ dataBR, horaInicio, horaFim, servico }) {
+
+function abrirModalConfirmacao() {
   const modal = document.getElementById("modalConfirmacao");
   const titulo = document.getElementById("modalTitulo");
   const texto = document.getElementById("modalTexto");
@@ -315,8 +314,6 @@ function abrirModalConfirmacao({ dataBR, horaInicio, horaFim, servico }) {
   if (!modal) return;
 
   if (titulo) titulo.textContent = "Informe seus dados";
-
-  // ✅ aqui não mostra confirmação nenhuma, só limpa
   if (texto) texto.innerHTML = "";
 
   if (nomeInput) { nomeInput.value = ""; nomeInput.disabled = false; }
@@ -328,12 +325,14 @@ function abrirModalConfirmacao({ dataBR, horaInicio, horaFim, servico }) {
   modal.style.display = "flex";
   setTimeout(() => nomeInput && nomeInput.focus(), 50);
 }
+
 function fecharModalConfirmacao() {
   const modal = document.getElementById("modalConfirmacao");
   if (modal) modal.style.display = "none";
 
-  // reseta estado visual
-  document.getElementById("modalTitulo") && (document.getElementById("modalTitulo").textContent = "Confirmar agendamento");
+  const titulo = document.getElementById("modalTitulo");
+  if (titulo) titulo.textContent = "Confirmar agendamento";
+
   const btnCancelar = document.getElementById("btnCancelarModal");
   if (btnCancelar) btnCancelar.textContent = "Cancelar";
 
@@ -342,30 +341,10 @@ function fecharModalConfirmacao() {
   if (nomeInput) nomeInput.removeAttribute("disabled");
   if (telInput) telInput.removeAttribute("disabled");
 
-  const btnOk = document.getElementById("btnOkModal");
-  if (btnOk) btnOk.style.display = "block";
-
   agendamentoPendente = null;
 }
-// valida + padroniza telefone em 55 + DDD + número
-function normalizarTelefoneBR(telefoneRaw) {
-  if (!telefoneRaw || !telefoneRaw.trim()) return null;
 
-  let telefone = telefoneRaw.replace(/\D/g, "");
-  telefone = telefone.replace(/^0+/, "");
-
-  if (telefone.startsWith("55")) {
-    // ok
-  } else {
-    if (telefone.length === 10 || telefone.length === 11) {
-      telefone = "55" + telefone;
-    } else {
-      return null;
-    }
-  }
-  return telefone;
-}
-function confirmarAgendamentoDoModal() {
+async function confirmarAgendamentoDoModal() {
   if (!agendamentoPendente) return;
 
   const nomeInput = document.getElementById("nomeCliente");
@@ -373,77 +352,102 @@ function confirmarAgendamentoDoModal() {
 
   const nome = (nomeInput?.value || "").trim();
   if (!nome) {
-    alert("Nome é obrigatório.");
+    alert("Nome e obrigatorio.");
     nomeInput && nomeInput.focus();
     return;
   }
 
   const telefone = normalizarTelefoneBR(telInput?.value || "");
   if (!telefone) {
-    alert("Telefone inválido. Digite com DDD (ex: 14 99999-8888).");
+    alert("Telefone invalido. Digite com DDD (ex: 14 99999-8888).");
     telInput && telInput.focus();
     return;
   }
 
-  const { dia, start, end, servico, dataBR, horaInicio } = agendamentoPendente;
+  const { dia, start, end, duracao, servico, dataBR, horaInicio } = agendamentoPendente;
 
-  const config = carregarConfigDoDia(dia);
-  const agendamentos = carregarAgendamentosDoDia(dia);
+  const startNum = Number(start);
+  let endNum = Number(end);
+  let durNum = Number(duracao);
+  if (Number.isFinite(startNum) && Number.isFinite(durNum)) {
+    endNum = startNum + durNum;
+  }
+  if (!Number.isFinite(durNum) && Number.isFinite(startNum) && Number.isFinite(endNum)) {
+    durNum = endNum - startNum;
+  }
 
-  // checa de novo antes de salvar
-  if (!estaDisponivel(start, end, agendamentos, config)) {
-    alert("Esse horário acabou de ficar indisponível. Escolha outro.");
-    fecharModalConfirmacao();
-    gerarHorarios();
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(dia)) {
+    alert("Data invalida.");
     return;
   }
 
-  agendamentos.push({
-    start,
-    end,
-    nome,
-    telefone,
-    servico
-  });
+  const selectedOpt = servicoSelect?.options[servicoSelect.selectedIndex];
+  const serviceIdRaw = selectedOpt?.dataset?.serviceId || "";
+  const serviceId = serviceIdRaw ? Number(serviceIdRaw) : null;
 
-  salvarAgendamentosDoDia(dia, agendamentos);
+  const payload = {
+    day: dia,
+    start: startNum,
+    end: endNum,
+    client_name: nome,
+    client_phone: telefone
+  };
+  if (Number.isFinite(serviceId)) payload.service_id = serviceId;
 
-  // ✅ mostra sucesso NO MODAL (depois de confirmar)
+  try {
+    const resp = await fetch("/api/bookings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      if (resp.status === 409) {
+        alert("Esse horario acabou de ficar indisponivel. Escolha outro.");
+        gerarHorarios();
+        return;
+      }
+      alert(json?.error || `Erro ao salvar o agendamento (HTTP ${resp.status}).`);
+      return;
+    }
+  } catch (e) {
+    console.error("Erro ao salvar booking:", e);
+    alert("Nao foi possivel salvar o agendamento. Tente novamente.");
+    return;
+  }
+
   const titulo = document.getElementById("modalTitulo");
   const texto = document.getElementById("modalTexto");
   const btnConfirmar = document.getElementById("btnConfirmarModal");
   const btnCancelar = document.getElementById("btnCancelarModal");
 
-  if (titulo) titulo.textContent = "Agendamento feito com sucesso ✅";
+  if (titulo) titulo.textContent = "Agendamento feito com sucesso";
 
   if (texto) {
     texto.innerHTML = `
-      Esperamos você em <strong>${dataBR}</strong> às <strong>${horaInicio}</strong>.<br>
-      Serviço: <strong>${servico}</strong><br><br>
-      Aguarde a confirmação pelo WhatsApp.
+      Esperamos voce em <strong>${dataBR}</strong> as <strong>${horaInicio}</strong>.<br>
+      Servico: <strong>${servico}</strong><br><br>
+      Aguarde a confirmacao pelo WhatsApp.
     `;
   }
 
-  // trava campos e esconde botão confirmar
   if (nomeInput) nomeInput.disabled = true;
   if (telInput) telInput.disabled = true;
   if (btnConfirmar) btnConfirmar.style.display = "none";
 
-  // botão cancelar vira OK e fecha
   if (btnCancelar) {
     btnCancelar.textContent = "OK";
     btnCancelar.onclick = () => fecharModalConfirmacao();
   }
 
-  // mensagem bonita na tela (se existir)
   const msgSucesso = document.getElementById("msgSucesso");
   if (msgSucesso) {
     msgSucesso.style.display = "block";
     msgSucesso.innerHTML = `
-      <strong>Agendamento feito com sucesso ✅</strong><br>
-      Esperamos você em <strong>${dataBR}</strong> às <strong>${horaInicio}</strong>.<br>
-      Serviço: <strong>${servico}</strong><br>
-      Aguarde a confirmação pelo WhatsApp.
+      <strong>Agendamento feito com sucesso</strong><br>
+      Esperamos voce em <strong>${dataBR}</strong> as <strong>${horaInicio}</strong>.<br>
+      Servico: <strong>${servico}</strong><br>
+      Aguarde a confirmacao pelo WhatsApp.
     `;
     msgSucesso.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -452,47 +456,22 @@ function confirmarAgendamentoDoModal() {
   agendamentoPendente = null;
 }
 
-//const dataAdminInput = document.getElementById("dataAdmin");
-//const mapaDiaEl = document.getElementById("mapaDia");
-
-//if (dataAdminInput) {
-//  dataAdminInput.addEventListener("change", () => {
-//    console.log("[MAPA] mudou data:", dataAdminInput.value);
-//    renderMapaDoDia(dataAdminInput.value);
-//  });
-
- // console.log("[MAPA] render inicial:", dataAdminInput.value);
-  //renderMapaDoDia(dataAdminInput.value);
-//}
-async function carregarServicosAPI() {
-  const resp = await fetch("/api/services", { cache: "no-store" });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-  const json = await resp.json();
-  const services = Array.isArray(json.services) ? json.services : [];
-
-  return services
-    .filter(s => s.active !== false)
-    .map(s => ({
-      nome: s.name,
-      duracao: Number(s.duration_minutes || 0),
-      preco: Number(s.price_cents || 0) / 100
-    }))
-    .filter(s => s.nome && s.duracao > 0);
-}
-
-
-
-// ======== INICIALIZAÇÃO ========
-
+// ======== INICIALIZACAO ========
 (async function init() {
-  // ... seu initData (min/value) pode ficar como está
-
-  if (servicoSelect) {
-    servicoSelect.addEventListener("change", gerarHorarios);
+  try {
+    diasDescansoSemana = await carregarDiasDescansoCliente();
+  } catch (e) {
+    console.error("Erro ao carregar dias de descanso:", e);
+    diasDescansoSemana = null;
   }
 
   if (dataInput) {
+    const prox = proximaDataPermitidaLocal();
+    const y = prox.getFullYear();
+    const m = String(prox.getMonth() + 1).padStart(2, "0");
+    const d = String(prox.getDate()).padStart(2, "0");
+    dataInput.value = `${y}-${m}-${d}`;
+
     dataInput.addEventListener("change", () => {
       const dia = dataInput.value;
       if (!dia) {
@@ -502,11 +481,11 @@ async function carregarServicosAPI() {
 
       const utc = parseYYYYMMDD(dia);
       if (!diaSemanaPermitidoUTC(utc)) {
-        alert("Atendimento somente de terça a sábado. Vou ajustar para a próxima data válida.");
-        const prox = proximaDataPermitidaLocal();
-        const y2 = prox.getFullYear();
-        const m2 = String(prox.getMonth() + 1).padStart(2, "0");
-        const d2 = String(prox.getDate()).padStart(2, "0");
+        alert("Atendimento somente de terca a sabado. Vou ajustar a proxima data valida.");
+        const prox2 = proximaDataPermitidaLocal();
+        const y2 = prox2.getFullYear();
+        const m2 = String(prox2.getMonth() + 1).padStart(2, "0");
+        const d2 = String(prox2.getDate()).padStart(2, "0");
         dataInput.value = `${y2}-${m2}-${d2}`;
       }
 
@@ -514,50 +493,19 @@ async function carregarServicosAPI() {
     });
   }
 
-  await renderSelectServicos(); // <-- carrega do Supabase
-  gerarHorarios();              // <-- só depois disso
+  if (servicoSelect) {
+    servicoSelect.addEventListener("change", gerarHorarios);
+  }
+
+  await renderSelectServicos();
+  gerarHorarios();
 })();
 
+// botoes do modal
+ document.getElementById("btnConfirmarModal")?.addEventListener("click", confirmarAgendamentoDoModal);
+ document.getElementById("btnCancelarModal")?.addEventListener("click", fecharModalConfirmacao);
 
-// ✅ Eventos com proteção
-if (servicoSelect) {
-  servicoSelect.addEventListener("change", gerarHorarios);
-}
-
-if (dataInput) {
-  dataInput.addEventListener("change", () => {
-    const dia = dataInput.value;
-    if (!dia) {
-      gerarHorarios();
-      return;
-    }
-
-    const utc = parseYYYYMMDD(dia);
-    if (!diaSemanaPermitidoUTC(utc)) {
-      alert("Atendimento somente de terça a sábado. Vou ajustar para a próxima data válida.");
-      const prox = proximaDataPermitidaLocal();
-      const y2 = prox.getFullYear();
-      const m2 = String(prox.getMonth() + 1).padStart(2, "0");
-      const d2 = String(prox.getDate()).padStart(2, "0");
-      dataInput.value = `${y2}-${m2}-${d2}`;
-    }
-
-    gerarHorarios();
-  });
-}
-
-renderSelectServicos().then(() => {
-  gerarHorarios();
-});
-
-
-// botões do modal
-document.getElementById("btnConfirmarModal")?.addEventListener("click", confirmarAgendamentoDoModal);
-document.getElementById("btnCancelarModal")?.addEventListener("click", fecharModalConfirmacao);
-
-// fechar modal clicando fora do card (opcional)
-document.getElementById("modalConfirmacao")?.addEventListener("click", (e) => {
+// fechar modal clicando fora do card
+ document.getElementById("modalConfirmacao")?.addEventListener("click", (e) => {
   if (e.target && e.target.id === "modalConfirmacao") fecharModalConfirmacao();
-});
-
-
+ });
