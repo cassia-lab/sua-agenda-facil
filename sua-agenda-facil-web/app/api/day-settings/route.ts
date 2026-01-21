@@ -196,10 +196,10 @@ export async function PUT(req: Request) {
     if (parsed.error || !parsed.data) {
       return NextResponse.json({ error: parsed.error || "Invalid payload" }, { status: 400 });
     }
-    const data = parsed.data;
+    const payload = parsed.data;
 
     const supabase = getSupabase();
-    const { data, error } = await supabase
+    const { data: resultData, error } = await supabase
       .from("day_settings")
       .update(payload)
       .eq("day", payload.day)
@@ -211,11 +211,11 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    if (!data) {
+    if (!resultData) {
       return NextResponse.json({ error: "Config not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ config: mapRow(data) });
+    return NextResponse.json({ config: mapRow(resultData) });
   } catch (e: any) {
     console.log("[day-settings API] Crash:", e);
     return NextResponse.json({ error: e?.message ?? "Crash" }, { status: 500 });
