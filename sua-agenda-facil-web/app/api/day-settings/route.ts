@@ -162,7 +162,7 @@ export async function POST(req: Request) {
     if (parsed.error || !parsed.data) {
       return NextResponse.json({ error: parsed.error || "Invalid payload" }, { status: 400 });
     }
-    const data = parsed.data;
+    const payload = parsed.data;
 
     const supabase = getSupabase();
     const { data, error } = await supabase
@@ -193,15 +193,16 @@ export async function PUT(req: Request) {
     }
 
     const parsed = parseBody(body);
-    if (parsed.error) {
-      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    if (parsed.error || !parsed.data) {
+      return NextResponse.json({ error: parsed.error || "Invalid payload" }, { status: 400 });
     }
+    const data = parsed.data;
 
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("day_settings")
-      .update(data)
-      .eq("day", data.day)
+      .update(payload)
+      .eq("day", payload.day)
       .select("day, fechado, dia_inicio, dia_fim, almoco_inicio, almoco_fim")
       .maybeSingle();
 
