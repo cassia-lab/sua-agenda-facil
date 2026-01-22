@@ -3,6 +3,12 @@ const horariosDiv = document.getElementById("horarios");
 const servicoSelect = document.getElementById("servico");
 const dataInput = document.getElementById("data");
 const tituloPagina = document.getElementById("tituloPagina");
+const calendarGrid = document.getElementById("calendarGrid");
+const btnPrevMonth = document.getElementById("btnPrevMonth");
+const btnNextMonth = document.getElementById("btnNextMonth");
+const labelMonth = document.getElementById("labelMonth");
+const selectedDateLabel = document.getElementById("selectedDateLabel");
+const serviceMeta = document.getElementById("serviceMeta");
 
 // ======= TITULO vindo do config.js =======
 const nomePagina = window.APP_CONFIG?.nomePagina || "Sua Agenda Facil";
@@ -21,6 +27,9 @@ const padrao = {
 let agendamentoPendente = null;
 let gerarHorariosSeq = 0;
 let diasDescansoSemana = null;
+let servicosCache = [];
+let calendarioMesAtual = new Date();
+let selectedDia = "";
 
 // ======== HELPERS ========
 function parseYYYYMMDD(s) {
@@ -28,9 +37,22 @@ function parseYYYYMMDD(s) {
   return new Date(Date.UTC(y, m - 1, d));
 }
 
+function formatYYYYMMDDLocal(dateObj) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const d = String(dateObj.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function diaSemanaPermitidoUTC(dateObjUTC) {
   const d = dateObjUTC.getUTCDay();
   return d >= 2 && d <= 6; // Tue-Sat
+}
+
+function isDiaPermitidoUTC(dateObjUTC) {
+  if (!diaSemanaPermitidoUTC(dateObjUTC)) return false;
+  if (diasDescansoSemana && diasDescansoSemana.has(dateObjUTC.getUTCDay())) return false;
+  return true;
 }
 
 function proximaDataPermitidaLocal() {
@@ -40,7 +62,7 @@ function proximaDataPermitidaLocal() {
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
     const utc = parseYYYYMMDD(`${y}-${m}-${day}`);
-    if (diaSemanaPermitidoUTC(utc)) return d;
+    if (isDiaPermitidoUTC(utc)) return d;
     d.setDate(d.getDate() + 1);
   }
 }
@@ -53,6 +75,19 @@ function minutosParaHHMM(minutos) {
   const h = Math.floor(minutos / 60);
   const m = minutos % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function nomeMes(idx) {
+  const nomes = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  return nomes[idx] || "";
+}
+
+function formatarDataResumida(dia) {
+  if (!dia) return "";
+  const [y, m, d] = dia.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const semana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"][dt.getUTCDay()];
+  return `Para: ${semana}, ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
 }
 
 function ajustarInicioParaPasso(minutos, passo) {
@@ -169,6 +204,7 @@ async function renderSelectServicos() {
     }
 
     servicoSelect.innerHTML = "";
+    servicosCache = lista;
     lista.forEach((s) => {
       const dur = Number(s.duracao || 0);
       if (!dur) return;
@@ -183,6 +219,7 @@ async function renderSelectServicos() {
     if (!servicoSelect.value && servicoSelect.options.length) {
       servicoSelect.selectedIndex = 0;
     }
+    atualizarResumoServico();
   } catch (e) {
     console.error("Erro ao carregar servicos:", e);
     servicoSelect.innerHTML = "<option value=\"\">Erro ao carregar servicos</option>";
@@ -211,8 +248,8 @@ async function gerarHorarios() {
   }
 
   const dateObjUTC = parseYYYYMMDD(dia);
-  if (!diaSemanaPermitidoUTC(dateObjUTC)) {
-    horariosDiv.textContent = "Atendimento somente de terca a sabado.";
+  if (!isDiaPermitidoUTC(dateObjUTC)) {
+    horariosDiv.textContent = "Este dia nao esta disponivel para atendimento.";
     return;
   }
 
@@ -273,11 +310,11 @@ async function gerarHorarios() {
 
     achou = true;
     const botao = document.createElement("button");
-    botao.textContent = `${minutosParaHHMM(slotStart)} (ate ${minutosParaHHMM(slotEnd)})`;
+    botao.textContent = `${minutosParaHHMM(slotStart)}`;
 
     botao.onclick = () => {
       document
-        .querySelectorAll(".horarios button.selecionado")
+        .querySelectorAll(".horarios-grid button.selecionado")
         .forEach((b) => b.classList.remove("selecionado"));
 
       botao.classList.add("selecionado");
@@ -290,6 +327,71 @@ async function gerarHorarios() {
   if (!achou) {
     horariosDiv.textContent = "Nenhum horario disponivel para esse servico nessa data.";
   }
+}
+
+function atualizarResumoServico() {
+  if (!serviceMeta || !servicoSelect) return;
+  const opt = servicoSelect.options[servicoSelect.selectedIndex];
+  if (!opt) {
+    serviceMeta.textContent = "";
+    return;
+  }
+  const dur = opt.value ? `${opt.value} min` : "";
+  const texto = opt.textContent || "";
+  serviceMeta.textContent = dur ? `${texto}` : texto;
+}
+
+function renderCalendario() {
+  if (!calendarGrid) return;
+
+  const ano = calendarioMesAtual.getFullYear();
+  const mes = calendarioMesAtual.getMonth();
+  if (labelMonth) labelMonth.textContent = `${nomeMes(mes)} ${ano}`;
+
+  calendarGrid.innerHTML = "";
+
+  const primeiroDia = new Date(ano, mes, 1);
+  const startDow = primeiroDia.getDay();
+  const totalDias = new Date(ano, mes + 1, 0).getDate();
+  const hoje = new Date();
+  const hojeStr = formatYYYYMMDDLocal(hoje);
+
+  for (let i = 0; i < startDow; i++) {
+    const vazio = document.createElement("div");
+    vazio.className = "calendar-cell empty";
+    calendarGrid.appendChild(vazio);
+  }
+
+  for (let d = 1; d <= totalDias; d++) {
+    const dayStr = `${ano}-${String(mes + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const utc = parseYYYYMMDD(dayStr);
+    const permitido = isDiaPermitidoUTC(utc);
+    const isPast = dayStr < hojeStr;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "calendar-cell day-btn";
+    btn.textContent = String(d);
+    btn.dataset.day = dayStr;
+
+    if (selectedDia === dayStr) btn.classList.add("selected");
+    if (isPast || !permitido) {
+      btn.classList.add("disabled");
+      btn.disabled = true;
+    }
+
+    btn.addEventListener("click", () => setSelectedDia(dayStr, true));
+    calendarGrid.appendChild(btn);
+  }
+}
+
+function setSelectedDia(dia, fromCalendar) {
+  selectedDia = dia;
+  if (dataInput) dataInput.value = dia;
+  if (selectedDateLabel) selectedDateLabel.textContent = formatarDataResumida(dia);
+  renderCalendario();
+  gerarHorarios();
+  if (!fromCalendar) return;
 }
 
 function agendar(dia, start, end, duracao) {
@@ -467,10 +569,11 @@ async function confirmarAgendamentoDoModal() {
 
   if (dataInput) {
     const prox = proximaDataPermitidaLocal();
-    const y = prox.getFullYear();
-    const m = String(prox.getMonth() + 1).padStart(2, "0");
-    const d = String(prox.getDate()).padStart(2, "0");
-    dataInput.value = `${y}-${m}-${d}`;
+    dataInput.value = formatYYYYMMDDLocal(prox);
+    selectedDia = dataInput.value;
+    calendarioMesAtual = new Date(prox.getFullYear(), prox.getMonth(), 1);
+    if (selectedDateLabel) selectedDateLabel.textContent = formatarDataResumida(selectedDia);
+    renderCalendario();
 
     dataInput.addEventListener("change", () => {
       const dia = dataInput.value;
@@ -480,26 +583,42 @@ async function confirmarAgendamentoDoModal() {
       }
 
       const utc = parseYYYYMMDD(dia);
-      if (!diaSemanaPermitidoUTC(utc)) {
-        alert("Atendimento somente de terca a sabado. Vou ajustar a proxima data valida.");
+      if (!isDiaPermitidoUTC(utc)) {
         const prox2 = proximaDataPermitidaLocal();
-        const y2 = prox2.getFullYear();
-        const m2 = String(prox2.getMonth() + 1).padStart(2, "0");
-        const d2 = String(prox2.getDate()).padStart(2, "0");
-        dataInput.value = `${y2}-${m2}-${d2}`;
+        dataInput.value = formatYYYYMMDDLocal(prox2);
       }
-
+      selectedDia = dataInput.value;
+      renderCalendario();
       gerarHorarios();
     });
   }
 
   if (servicoSelect) {
-    servicoSelect.addEventListener("change", gerarHorarios);
+    servicoSelect.addEventListener("change", () => {
+      atualizarResumoServico();
+      gerarHorarios();
+    });
   }
 
   await renderSelectServicos();
   gerarHorarios();
 })();
+
+if (btnPrevMonth) {
+  btnPrevMonth.addEventListener("click", () => {
+    calendarioMesAtual.setMonth(calendarioMesAtual.getMonth() - 1);
+    calendarioMesAtual.setDate(1);
+    renderCalendario();
+  });
+}
+
+if (btnNextMonth) {
+  btnNextMonth.addEventListener("click", () => {
+    calendarioMesAtual.setMonth(calendarioMesAtual.getMonth() + 1);
+    calendarioMesAtual.setDate(1);
+    renderCalendario();
+  });
+}
 
 // botoes do modal
  document.getElementById("btnConfirmarModal")?.addEventListener("click", confirmarAgendamentoDoModal);

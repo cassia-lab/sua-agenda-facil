@@ -4,13 +4,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sua Agenda Fácil - Geisi Nails</title>
+  <title>Sua Agenda Facil - Geisi Nails</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 
-<body>
+<body class="client-page">
 
-<!-- ✅ Modal de confirmação (dentro do body) -->
+<!-- Modal de confirmacao (dentro do body) -->
 <div id="modalConfirmacao" class="modal" style="display:none;">
   <div class="modal-card">
     <h3 id="modalTitulo">Informe seus dados para agendar</h3>
@@ -21,7 +21,7 @@
     <input
       type="text"
       id="nomeCliente"
-      placeholder="Ex: Cássia"
+      placeholder="Ex: Cassia"
       autocomplete="name"
     />
 
@@ -29,7 +29,7 @@
     <input
       type="tel"
       id="telefoneCliente"
-      placeholder="Digite seu WhatsApp (DDD + número)"
+      placeholder="Digite seu WhatsApp (DDD + numero)"
       inputmode="numeric"
       pattern="[0-9]*"
       maxlength="15"
@@ -41,33 +41,60 @@
   </div>
 </div>
 
+  <div class="client-shell">
+    <header class="client-header">
+      <div class="client-title">
+        <h1 id="tituloPagina"></h1>
+        <p class="subtitulo">Agende seu horario em poucos cliques.</p>
+      </div>
+    </header>
 
-  <!-- ✅ Container do CLIENTE -->
-  <div class="container client-container">
-    <h1 id="tituloPagina"></h1>
-    <p class="subtitulo">Agende seu horário em poucos cliques.</p>
+    <section class="calendar-card">
+      <div class="calendar-top">
+        <div class="month-controls">
+          <button class="icon-btn" id="btnPrevMonth" type="button"><</button>
+          <span id="labelMonth" class="month-label"></span>
+          <button class="icon-btn" id="btnNextMonth" type="button">></button>
+        </div>
+        <div class="selected-date" id="selectedDateLabel"></div>
+      </div>
 
-    <label for="servico">Escolha o serviço:</label>
-    <select id="servico"></select>
+      <div class="weekdays-row">
+        <span>Dom</span>
+        <span>Seg</span>
+        <span>Ter</span>
+        <span>Qua</span>
+        <span>Qui</span>
+        <span>Sex</span>
+        <span>Sab</span>
+      </div>
+      <div class="calendar-grid" id="calendarGrid"></div>
+    </section>
 
-    <label for="data">Escolha a data:</label>
-    <input type="date" id="data" />
+    <section class="service-card">
+      <label for="servico">Servico</label>
+      <select id="servico"></select>
+      <div class="service-meta" id="serviceMeta"></div>
+    </section>
 
-    <label>Horários disponíveis:</label>
-    <div class="horarios" id="horarios"></div>
+    <section class="times-card">
+      <div class="times-header">
+        <span>Horarios disponiveis</span>
+      </div>
+      <div class="horarios-grid" id="horarios"></div>
+      <div id="msgSucesso" class="msg-sucesso" style="display:none;"></div>
+      <p class="aviso">Leva menos de 1 minuto para agendar</p>
+    </section>
 
-    <div id="msgSucesso" class="msg-sucesso" style="display:none;"></div>
-
-    <p class="aviso"> ⏱ Leva menos de 1 minuto para agendar</p>
+    <input type="date" id="data" class="visually-hidden" />
 
     <p class="rodape">
-      Feito com <strong>Sua Agenda Fácil</strong>
+      Feito com <strong>Sua Agenda Facil</strong>
     </p>
   </div>
 
 <script src="/config.js"></script>
 <script src="/cliente/script.js"></script>
-
 
 </body>
 
