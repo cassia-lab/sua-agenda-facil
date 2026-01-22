@@ -140,7 +140,7 @@ export async function GET(req: Request) {
       .select("day, start_min, end_min, status")
       .gte("day", start)
       .lt("day", end)
-      .neq("status", "canceled");
+      .not("status", "in", "(canceled,rescheduled)");
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

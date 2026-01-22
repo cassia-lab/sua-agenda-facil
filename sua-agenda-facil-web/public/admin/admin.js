@@ -24,6 +24,13 @@ const defaultFimAlmoco = document.getElementById("defaultFimAlmoco");
 const btnSalvarConfig = document.getElementById("btnSalvarConfig");
 const btnSalvarPadraoCompleto = document.getElementById("btnSalvarPadraoCompleto");
 const listaFechadosForaPadrao = document.getElementById("listaFechadosForaPadrao");
+const modalRemarcar = document.getElementById("modalRemarcar");
+const remarcarInfo = document.getElementById("remarcarInfo");
+const remarcarData = document.getElementById("remarcarData");
+const remarcarInicio = document.getElementById("remarcarInicio");
+const remarcarFim = document.getElementById("remarcarFim");
+const btnConfirmarRemarcar = document.getElementById("btnConfirmarRemarcar");
+const btnCancelarRemarcar = document.getElementById("btnCancelarRemarcar");
 
 const btnLimparAgendamentos = document.getElementById("btnLimparAgendamentos");
 const btnVerAgendamentos = document.getElementById("btnVerAgendamentos");
@@ -192,7 +199,10 @@ async function carregarAgendamentosDoDia(dia) {
     end: Number(b?.end_min ?? b?.end),
     nome: b?.client_name ?? b?.nome ?? b?.name ?? null,
     telefone: b?.client_phone ?? b?.telefone ?? b?.phone ?? null,
-    servico: b?.service_name ?? b?.servico ?? b?.service ?? null
+    servico: b?.service_name ?? b?.servico ?? b?.service ?? null,
+    paid: Boolean(b?.paid),
+    status: b?.status ?? null,
+    service_id: b?.service_id ?? null
   })).filter(b => Number.isFinite(b.start) && Number.isFinite(b.end));
 }
 
@@ -413,98 +423,125 @@ if (s.tipo === "almoco") {
       const ag = s.ag || {};
       const serv = ag.servico || "Serviço";
       const nome = ag.nome || "Sem nome";
-      const tel  = ag.telefone || "";
       const precoTxt = (ag.preco != null && String(ag.preco).trim() !== "")
         ? ` — ${String(ag.preco).startsWith("R$") ? ag.preco : `R$ ${ag.preco}`}`
         : "";
 
-      const linha1 = document.createElement("div");
-      linha1.style.fontSize = "13px";
-      linha1.style.fontWeight = "600";
-      linha1.textContent = `${serv}${precoTxt}`;
-      //linha1.textContent = `Ocupado • ${serv}${precoTxt}`;
+      const linha = document.createElement("div");
+      linha.style.display = "grid";
+      linha.style.gridTemplateColumns = "1fr auto";
+      linha.style.alignItems = "center";
+      linha.style.gap = "10px";
+      linha.style.width = "100%";
 
-      const linha2 = document.createElement("div");
-      linha2.style.fontSize = "12px";
-      linha2.style.color = "#333";
-      linha2.textContent = `${nome} • ${tel}`;
+      const info = document.createElement("div");
+      info.style.display = "flex";
+      info.style.flexDirection = "column";
+      info.style.gap = "2px";
+      info.style.flex = "1";
+      info.style.textAlign = "center";
+      info.style.alignItems = "center";
+
+      const titulo = document.createElement("div");
+      titulo.style.fontSize = "13px";
+      titulo.style.fontWeight = "600";
+      titulo.textContent = `${serv}${precoTxt}`;
+
+      const sub = document.createElement("div");
+      sub.style.fontSize = "12px";
+      sub.style.color = "#333";
+      sub.textContent = `${nome}`;
+
+      info.appendChild(titulo);
+      info.appendChild(sub);
 
       const acoes = document.createElement("div");
       acoes.style.display = "flex";
-      acoes.style.flexDirection = "column";
-      acoes.style.gap = "8px";
-      acoes.style.marginTop = "10px";
-      acoes.style.alignItems = "flex-end";
+      acoes.style.gap = "6px";
+      acoes.style.alignItems = "center";
 
-      const btnWpp = document.createElement("button");
-      btnWpp.textContent = "Confirmar (WhatsApp)";
-      btnWpp.style.width = "auto";
+      function criarIcone(label, svg, ativo) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.setAttribute("aria-label", label);
+        btn.title = label;
+        btn.innerHTML = svg;
+        btn.style.width = "30px";
+        btn.style.height = "30px";
+        btn.style.borderRadius = "8px";
+        btn.style.border = "1px solid #e5e7eb";
+        btn.style.background = ativo ? "#22c55e" : "#fff";
+        btn.style.color = ativo ? "#fff" : "#6b7280";
+        btn.style.display = "flex";
+        btn.style.alignItems = "center";
+        btn.style.justifyContent = "center";
+        btn.style.padding = "0";
+        return btn;
+      }
 
+      const iconRemarcar = "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"1 4 1 10 7 10\"/><path d=\"M3.51 15a9 9 0 1 0 .49-5\"/></svg>";
+      const iconWpp = "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 11.5a8.5 8.5 0 1 1-4.7-7.6\"/><path d=\"M8.5 9.5c1 2.5 3 4.5 5.5 5.5\"/><path d=\"M15 15l2.5-.5\"/></svg>";
+      const iconPago = "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20.84 4.61a5.5 5.5 0 0 1 0 7.78L7.5 19.73 3 21l1.27-4.5L16.61 4.61a5.5 5.5 0 0 1 7.78 0Z\"/></svg>";
+      const iconPagoOn = "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M9 12l2 2 4-4\"/></svg>";
+
+      const btnRemarcar = criarIcone("Remarcar", iconRemarcar, false);
+      btnRemarcar.style.borderColor = "#93c5fd";
+      btnRemarcar.style.color = "#2563eb";
+      btnRemarcar.onclick = () => abrirModalRemarcar(ag, dia);
+
+      const btnWpp = criarIcone("WhatsApp", iconWpp, false);
+      btnWpp.style.borderColor = "#86efac";
+      btnWpp.style.color = "#16a34a";
       btnWpp.onclick = () => {
-        // se você já tem uma função pronta, usamos ela:
-        if (typeof abrirConfirmacaoWhatsApp === "function") {
-          abrirConfirmacaoWhatsApp(dia, ag);
-          return;
-        }
-
-        // fallback simples
-        const telefone = String(ag.telefone || "").replace(/\D/g, "");
+        let telefone = String(ag.telefone || "").replace(/\D/g, "");
         if (!telefone) {
           alert("Sem telefone no agendamento.");
           return;
         }
-
-        const dataBR = (dia || "").split("-").reverse().join("/");
-        const msg =
-`Olá ${nome}! 😊
-Seu horário está confirmado ✅
-
-Serviço: ${serv}
-Data: ${dataBR}
-Horário: ${hhmm(ag.start)} - ${hhmm(ag.end)}
-
-Qualquer coisa, responda por aqui.`;
-
+        if (!telefone.startsWith("55")) telefone = "55" + telefone;
+        const nomeCliente = ag.nome || "Cliente";
+        const msg = `Ola ${nomeCliente}, tudo bem?`;
         window.open(`https://wa.me/${telefone}?text=${encodeURIComponent(msg)}`, "_blank");
       };
 
-      const btnApagar = document.createElement("button");
-      btnApagar.textContent = "Apagar";
-      btnApagar.style.width = "auto";
-
-      btnApagar.onclick = async () => {
-        const ok = confirm("Apagar este agendamento?");
-        if (!ok) return;
-
-        if (!ag.id) {
-          alert("Nao foi possivel identificar este agendamento.");
-          return;
-        }
-
+      const pagoAtivo = Boolean(ag.paid);
+      const btnPago = criarIcone("Pago", pagoAtivo ? iconPagoOn : iconPago, pagoAtivo);
+      btnPago.onclick = async () => {
         try {
-          const resp = await fetch(`/api/bookings?id=${encodeURIComponent(ag.id)}`, {
-            method: "DELETE"
+          const resp = await fetch("/api/bookings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "toggle_paid",
+              id: ag.id,
+              paid: !pagoAtivo
+            })
           });
           const json = await resp.json().catch(() => ({}));
-          if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
+          if (!resp.ok) {
+            alert(json?.error || `Erro ao atualizar pagamento (HTTP ${resp.status}).`);
+            return;
+          }
         } catch (e) {
-          console.error("Erro ao apagar agendamento:", e);
-          alert("Nao foi possivel apagar o agendamento.");
+          console.error("Erro ao atualizar pagamento:", e);
+          alert("Nao foi possivel atualizar o pagamento.");
           return;
         }
 
         await renderMapaDoDia(dia);
-        if (typeof renderAgendamentos === "function") {
-          await renderAgendamentos(dia);
-        }
       };
 
-      //acoes.appendChild(btnWpp);
-      //acoes.appendChild(btnApagar);
+      acoes.appendChild(btnRemarcar);
+      acoes.appendChild(btnWpp);
+      acoes.appendChild(btnPago);
 
-      direita.appendChild(linha1);
-      direita.appendChild(linha2);
-      //direita.appendChild(acoes);
+      linha.appendChild(info);
+      linha.appendChild(acoes);
+
+      direita.style.textAlign = "left";
+      direita.style.flex = "1";
+      direita.style.display = "flex";
+      direita.appendChild(linha);
     }
 
     card.appendChild(esquerda);
@@ -535,6 +572,93 @@ function hhmm(min) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+function abrirModalRemarcar(ag, dia) {
+  if (!modalRemarcar || !remarcarData || !remarcarInicio || !remarcarFim) return;
+  remarcarAgendamento = { ...ag, day: dia };
+
+  if (remarcarInfo) {
+    const nome = ag?.nome || "Cliente";
+    const serv = ag?.servico || "Servico";
+    remarcarInfo.textContent = `${nome} - ${serv}`;
+  }
+
+  remarcarData.value = dia || "";
+  remarcarInicio.value = minutosParaHHMM(Number(ag?.start ?? 0));
+  remarcarFim.value = minutosParaHHMM(Number(ag?.end ?? 0));
+
+  modalRemarcar.style.display = "flex";
+}
+
+function fecharModalRemarcar() {
+  if (modalRemarcar) modalRemarcar.style.display = "none";
+  remarcarAgendamento = null;
+}
+
+if (btnCancelarRemarcar) {
+  btnCancelarRemarcar.addEventListener("click", () => fecharModalRemarcar());
+}
+
+if (modalRemarcar) {
+  modalRemarcar.addEventListener("click", (e) => {
+    if (e.target && e.target.id === "modalRemarcar") {
+      fecharModalRemarcar();
+    }
+  });
+}
+
+if (btnConfirmarRemarcar) {
+  btnConfirmarRemarcar.addEventListener("click", async () => {
+    if (!remarcarAgendamento) return;
+
+    const dia = (remarcarData?.value || "").trim();
+    if (!dia) {
+      alert("Selecione uma data.");
+      return;
+    }
+
+    const ini = hhmmParaMinutos(remarcarInicio?.value || "");
+    const fim = hhmmParaMinutos(remarcarFim?.value || "");
+
+    if (ini == null || fim == null || fim <= ini) {
+      alert("Horario invalido.");
+      return;
+    }
+
+    try {
+      const resp = await fetch("/api/bookings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reschedule",
+          id: remarcarAgendamento.id,
+          day: dia,
+          start_min: ini,
+          end_min: fim
+        })
+      });
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        alert(json?.error || `Erro ao remarcar (HTTP ${resp.status}).`);
+        return;
+      }
+    } catch (e) {
+      console.error("Erro ao remarcar:", e);
+      alert("Nao foi possivel remarcar.");
+      return;
+    }
+
+    fecharModalRemarcar();
+    const diaAtual = dataAdmin?.value;
+    if (diaAtual) {
+      await renderMapaDoDia(diaAtual);
+      if (typeof renderAgendamentos === "function") {
+        await renderAgendamentos(diaAtual);
+      }
+    }
+    await refreshCalendario();
+  });
+}
 async function confirmarAgendamentoAdmin(dia, start, telefone, servico) {
   if (!telefone) {
     alert("Esse agendamento nao tem telefone.");
@@ -915,7 +1039,7 @@ if (btnLimparAgendamentos) {
   btnLimparAgendamentos.addEventListener("click", () => limparAgendamentos());
 }
 const calendarioCache = new Map();
-let calendarioMesAtual = new Date();
+let calendarioMesAtual = new Date();let remarcarAgendamento = null;
 calendarioMesAtual.setDate(1);
 
 function formatYYYYMM(dateObj) {

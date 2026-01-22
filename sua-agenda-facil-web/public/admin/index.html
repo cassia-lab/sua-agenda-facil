@@ -194,6 +194,30 @@
 
 
 
+
+<div id="modalRemarcar" class="modal" style="display:none;">
+  <div class="modal-card">
+    <h3>Remarcar agendamento</h3>
+    <p id="remarcarInfo"></p>
+
+    <label>Nova data:</label>
+    <input type="date" id="remarcarData" />
+
+    <div class="row-2">
+      <div>
+        <label>Inicio:</label>
+        <input type="time" id="remarcarInicio" />
+      </div>
+      <div>
+        <label>Fim:</label>
+        <input type="time" id="remarcarFim" />
+      </div>
+    </div>
+
+    <button id="btnConfirmarRemarcar" type="button">Salvar remarcacao</button>
+    <button id="btnCancelarRemarcar" type="button" class="btn-secundario">Cancelar</button>
+  </div>
+</div>
 <script src="/config.js"></script>
 <script src="/admin/admin.js"></script>
 

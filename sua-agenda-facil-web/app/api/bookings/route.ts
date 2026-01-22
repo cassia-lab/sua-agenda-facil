@@ -26,9 +26,9 @@ export async function GET(req: Request) {
 
     const { data, error } = await supabase
       .from("bookings")
-      .select("id, day, start_min, end_min, client_name, client_phone, status, service_id, services(name)")
+      .select("id, day, start_min, end_min, client_name, client_phone, status, service_id, paid, rescheduled_from, services(name)")
       .eq("day", day)
-      .neq("status", "canceled")
+      .not("status", "in", "(canceled,rescheduled)")
       .order("start_min", { ascending: true });
 
     if (error) {
@@ -38,10 +38,164 @@ export async function GET(req: Request) {
 
     const bookings = (data ?? []).map((row: any) => ({
       ...row,
-      service_name: row?.services?.name ?? null
+      service_name: row?.services?.name ?? null,
+      paid: Boolean(row?.paid),
+      rescheduled_from: row?.rescheduled_from ?? null
     }));
 
     return NextResponse.json({ bookings });
+  } catch (e: any) {
+    console.log("[bookings API] Crash:", e);
+    return NextResponse.json({ error: e?.message ?? "Crash" }, { status: 500 });
+  }
+}
+
+export async function PUT(req: Request) {
+  try {
+    let body: any = null;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+
+    const action = String(body?.action || "").trim();
+    const id = Number(body?.id);
+
+    if (!Number.isFinite(id)) {
+      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+    }
+
+    const supabase = getSupabase();
+
+    if (action === "toggle_paid") {
+      const paid = Boolean(body?.paid);
+      const { data, error } = await supabase
+        .from("bookings")
+        .update({ paid })
+        .eq("id", id)
+        .select("id, day, start_min, end_min, client_name, client_phone, status, service_id, paid, rescheduled_from")
+        .maybeSingle();
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      if (!data) {
+        return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+      }
+      return NextResponse.json({ booking: data });
+    }
+
+    if (action === "reschedule") {
+      const rawDay = typeof body?.day === "string" ? body.day.trim() : "";
+      const day = rawDay.includes("T") ? rawDay.split("T")[0] : rawDay;
+      const start = Number(body?.start_min ?? body?.start);
+      const end = Number(body?.end_min ?? body?.end);
+
+      if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+        return NextResponse.json({ error: "Invalid day" }, { status: 400 });
+      }
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        return NextResponse.json({ error: "Invalid time range" }, { status: 400 });
+      }
+
+      const { data: original, error: originalError } = await supabase
+        .from("bookings")
+        .select("id, day, start_min, end_min, client_name, client_phone, status, service_id, paid")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (originalError) {
+        return NextResponse.json({ error: originalError.message }, { status: 500 });
+      }
+      if (!original) {
+        return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+      }
+
+      const { data: dayCfg, error: cfgError } = await supabase
+        .from("day_settings")
+        .select("day, fechado")
+        .eq("day", day)
+        .maybeSingle();
+
+      if (cfgError) {
+        return NextResponse.json({ error: cfgError.message }, { status: 500 });
+      }
+      if (dayCfg?.fechado) {
+        return NextResponse.json({ error: "Day closed" }, { status: 409 });
+      }
+
+      if (!dayCfg) {
+        const weekday = getWeekday(day);
+        if (weekday >= 0) {
+          const { data: weeklyClosed, error: weeklyError } = await supabase
+            .from("weekly_closed")
+            .select("weekday")
+            .eq("weekday", weekday)
+            .limit(1);
+
+          if (weeklyError) {
+            return NextResponse.json({ error: weeklyError.message }, { status: 500 });
+          }
+
+          if (weeklyClosed && weeklyClosed.length > 0) {
+            return NextResponse.json({ error: "Day closed" }, { status: 409 });
+          }
+        }
+      }
+
+      const { data: conflicts, error: conflictError } = await supabase
+        .from("bookings")
+        .select("id, start_min, end_min, status")
+        .eq("day", day)
+        .not("status", "in", "(canceled,rescheduled)")
+        .neq("id", id)
+        .lt("start_min", end)
+        .gt("end_min", start)
+        .limit(1);
+
+      if (conflictError) {
+        return NextResponse.json({ error: conflictError.message }, { status: 500 });
+      }
+      if (conflicts && conflicts.length > 0) {
+        return NextResponse.json({ error: "Slot not available" }, { status: 409 });
+      }
+
+      const newPayload: any = {
+        day,
+        start_min: start,
+        end_min: end,
+        client_name: original.client_name,
+        client_phone: original.client_phone,
+        service_id: original.service_id ?? null,
+        status: "pending",
+        paid: Boolean(original.paid),
+        rescheduled_from: original.id
+      };
+
+      const { data: created, error: insertError } = await supabase
+        .from("bookings")
+        .insert(newPayload)
+        .select("*")
+        .single();
+
+      if (insertError) {
+        return NextResponse.json({ error: insertError.message }, { status: 500 });
+      }
+
+      const { error: updateError } = await supabase
+        .from("bookings")
+        .update({ status: "rescheduled" })
+        .eq("id", original.id);
+
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ booking: created }, { status: 201 });
+    }
+
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (e: any) {
     console.log("[bookings API] Crash:", e);
     return NextResponse.json({ error: e?.message ?? "Crash" }, { status: 500 });
@@ -155,7 +309,7 @@ export async function POST(req: Request) {
       .from("bookings")
       .select("id, start_min, end_min, status")
       .eq("day", day)
-      .neq("status", "canceled")
+      .not("status", "in", "(canceled,rescheduled)")
       .lt("start_min", end)
       .gt("end_min", start)
       .limit(1);
