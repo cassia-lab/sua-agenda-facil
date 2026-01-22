@@ -49,6 +49,7 @@
         <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e5e7eb;margin-right:6px;"></span>Fechado</span>
       </div>
       <div id="calendarioGrid" style="display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:6px; width:100%;"></div>
+      <button id="btnLimparAgendamentos" type="button" style="margin-top:12px;">Limpar todos os agendamentos</button>
       <div id="agendaDetalhePopover" style="display:none; position:absolute; z-index:10; background:#1f2937; color:#fff; border-radius:12px; padding:12px; min-width:240px; max-width:320px; box-shadow:0 10px 24px rgba(0,0,0,0.25); max-height:70vh; overflow:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <div id="agendaDetalheTitulo" style="font-weight:bold;">Selecione um dia</div>
@@ -61,12 +62,6 @@
     <div id="listaAgendamentos"></div>
   </div>
 <div id="listaAgendamentos"></div>
-</div>
-
-  <button id="btnConfirmarTodos" type="button">Confirmar todos (WhatsApp)</button>
-   <button onclick="limparAgendamentos()">Limpar todos os agendamentos</button>
-  
-</div>
 
 
 

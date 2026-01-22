@@ -30,6 +30,7 @@ let diasDescansoSemana = null;
 let servicosCache = [];
 let calendarioMesAtual = new Date();
 let selectedDia = "";
+let excecoesPorDia = new Map();
 
 // ======== HELPERS ========
 function parseYYYYMMDD(s) {
@@ -53,6 +54,12 @@ function isDiaPermitidoUTC(dateObjUTC) {
   if (!diaSemanaPermitidoUTC(dateObjUTC)) return false;
   if (diasDescansoSemana && diasDescansoSemana.has(dateObjUTC.getUTCDay())) return false;
   return true;
+}
+
+function getExcecaoStatus(dia) {
+  if (!dia || !excecoesPorDia) return null;
+  if (!excecoesPorDia.has(dia)) return null;
+  return excecoesPorDia.get(dia) ? "closed" : "open";
 }
 
 function proximaDataPermitidaLocal() {
@@ -152,6 +159,25 @@ async function carregarDiasDescansoCliente() {
   return new Set(days.map((d) => Number(d)));
 }
 
+async function carregarExcecoesMes(ano, mes) {
+  const mesStr = String(mes).padStart(2, "0");
+  const prefix = `${ano}-${mesStr}-`;
+  const resp = await fetch("/api/day-settings?limit=500", { cache: "no-store" });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json = await resp.json();
+  const configs = Array.isArray(json?.configs) ? json.configs : [];
+
+  const mapa = new Map();
+  configs.forEach((c) => {
+    const day = c?.day;
+    if (!day || typeof day !== "string") return;
+    if (!day.startsWith(prefix)) return;
+    mapa.set(day, Boolean(c.fechado));
+  });
+
+  excecoesPorDia = mapa;
+}
+
 async function carregarBookingsAPI(dia) {
   const resp = await fetch(`/api/bookings?date=${encodeURIComponent(dia)}`, {
     cache: "no-store"
@@ -248,7 +274,12 @@ async function gerarHorarios() {
   }
 
   const dateObjUTC = parseYYYYMMDD(dia);
-  if (!isDiaPermitidoUTC(dateObjUTC)) {
+  const excecaoStatus = getExcecaoStatus(dia);
+  if (excecaoStatus === "closed") {
+    horariosDiv.textContent = "Este dia esta fechado.";
+    return;
+  }
+  if (!isDiaPermitidoUTC(dateObjUTC) && excecaoStatus !== "open") {
     horariosDiv.textContent = "Este dia nao esta disponivel para atendimento.";
     return;
   }
@@ -278,6 +309,7 @@ async function gerarHorarios() {
   }
 
   if (
+    excecaoStatus !== "open" &&
     !configMeta?.exists &&
     diasDescansoSemana &&
     diasDescansoSemana.has(parseYYYYMMDD(dia).getUTCDay())
@@ -341,7 +373,7 @@ function atualizarResumoServico() {
   serviceMeta.textContent = dur ? `${texto}` : texto;
 }
 
-function renderCalendario() {
+async function renderCalendario() {
   if (!calendarGrid) return;
 
   const ano = calendarioMesAtual.getFullYear();
@@ -356,6 +388,13 @@ function renderCalendario() {
   const hoje = new Date();
   const hojeStr = formatYYYYMMDDLocal(hoje);
 
+  try {
+    await carregarExcecoesMes(ano, mes + 1);
+  } catch (e) {
+    console.error("Erro carregando excecoes:", e);
+    excecoesPorDia = new Map();
+  }
+
   for (let i = 0; i < startDow; i++) {
     const vazio = document.createElement("div");
     vazio.className = "calendar-cell empty";
@@ -365,7 +404,9 @@ function renderCalendario() {
   for (let d = 1; d <= totalDias; d++) {
     const dayStr = `${ano}-${String(mes + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const utc = parseYYYYMMDD(dayStr);
-    const permitido = isDiaPermitidoUTC(utc);
+    const excecao = excecoesPorDia.has(dayStr) ? excecoesPorDia.get(dayStr) : null;
+    const permitidoPadrao = isDiaPermitidoUTC(utc);
+    const permitido = excecao === null ? permitidoPadrao : !excecao;
     const isPast = dayStr < hojeStr;
 
     const btn = document.createElement("button");
@@ -588,6 +629,11 @@ async function confirmarAgendamentoDoModal() {
         dataInput.value = formatYYYYMMDDLocal(prox2);
       }
       selectedDia = dataInput.value;
+      calendarioMesAtual = new Date(
+        Number(selectedDia.slice(0, 4)),
+        Number(selectedDia.slice(5, 7)) - 1,
+        1
+      );
       renderCalendario();
       gerarHorarios();
     });

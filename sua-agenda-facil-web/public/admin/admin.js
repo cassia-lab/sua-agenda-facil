@@ -25,7 +25,6 @@ const btnSalvarConfig = document.getElementById("btnSalvarConfig");
 const btnSalvarPadraoCompleto = document.getElementById("btnSalvarPadraoCompleto");
 const listaFechadosForaPadrao = document.getElementById("listaFechadosForaPadrao");
 
-const btnConfirmarTodos = document.getElementById("btnConfirmarTodos");
 const btnLimparAgendamentos = document.getElementById("btnLimparAgendamentos");
 const btnVerAgendamentos = document.getElementById("btnVerAgendamentos");
 const painelAgendamentos = document.getElementById("painelAgendamentos");
@@ -57,6 +56,22 @@ const agendaDetalheFechar = document.getElementById("agendaDetalheFechar");
 
 
 
+let adminAutoRefreshId = null;
+
+function iniciarAutoRefreshAdmin() {
+  if (adminAutoRefreshId) return;
+  adminAutoRefreshId = setInterval(async () => {
+    if (!adminConteudo || adminConteudo.style.display !== "block") return;
+    const dia = dataAdmin?.value;
+    if (dia) {
+      await renderMapaDoDia(dia);
+      if (typeof renderAgendamentos === "function") {
+        await renderAgendamentos(dia);
+      }
+    }
+    await refreshCalendario();
+  }, 60000);
+}
 async function refreshCalendario() {
   if (typeof calendarioCache !== "undefined" && calendarioCache) {
     calendarioCache.clear();
@@ -1271,6 +1286,7 @@ btnEntrarAdmin.addEventListener("click", async () => {
   }
 
   adminConteudo.style.display = "block";
+  iniciarAutoRefreshAdmin();
   await carregarForm(dataAdmin.value);
   await carregarDiasDescanso();
   await carregarHorarioPadrao();
@@ -1379,78 +1395,4 @@ if (btnSalvarPadraoCompleto) {
   btnSalvarPadraoCompleto.addEventListener("click", salvarPadraoCompleto);
 }
 
-// ================== CONFIRMAR TODOS ==================
-if (btnConfirmarTodos) {
-    btnConfirmarTodos.addEventListener("click", async () => {
-    if (adminConteudo.style.display !== "block") {
-      alert("Entre no admin primeiro.");
-      return;
-    }
 
-    const dia = (dataHorario && dataHorario.value) ? dataHorario.value : dataAdmin.value;
-    if (!dia) {
-      alert("Selecione uma data.");
-      return;
-    }
-
-    let ags = [];
-    try {
-      ags = await carregarAgendamentosDoDia(dia);
-    } catch (e) {
-      console.error("Erro buscando agendamentos:", e);
-      alert("Nao foi possivel carregar os agendamentos.");
-      return;
-    }
-    ags.sort((a, b) => a.start - b.start);
-    if (!ags.length) {
-      alert("Nao ha agendamentos neste dia.");
-      return;
-    }
-
-    const ok = confirm(
-      `Vou abrir confirmacoes no WhatsApp para este dia.
-
-Dica: permita pop-ups.
-
-Continuar?`
-    );
-    if (!ok) return;
-
-    let i = 0;
-    let enviados = 0;
-    let semTelefone = 0;
-
-    const delayMs = 800;
-
-    function abrirProximo() {
-      if (i >= ags.length) {
-        alert(
-          `Confirmacoes prontas.
-
-` +
-          `Abertos no WhatsApp: ${enviados}
-` +
-          `Sem telefone (pulados): ${semTelefone}`
-        );
-        return;
-      }
-
-      const ag = ags[i];
-      i++;
-
-      const url = abrirConfirmacaoWhatsApp(dia, ag);
-
-      if (!url) {
-        semTelefone++;
-        setTimeout(abrirProximo, 50);
-        return;
-      }
-
-      enviados++;
-      window.open(url, "_blank");
-      setTimeout(abrirProximo, delayMs);
-    }
-
-    abrirProximo();
-  });
-}
