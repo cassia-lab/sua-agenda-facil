@@ -200,21 +200,16 @@
     <h3>Remarcar agendamento</h3>
     <p id="remarcarInfo"></p>
 
-    <label>Nova data:</label>
-    <input type="date" id="remarcarData" />
+    <div id="remarcarCalendario" style="margin-top:10px;"></div>
 
-    <div class="row-2">
-      <div>
-        <label>Inicio:</label>
-        <input type="time" id="remarcarInicio" />
-      </div>
-      <div>
-        <label>Fim:</label>
-        <input type="time" id="remarcarFim" />
-      </div>
+    <div style="margin-top:10px;">
+      <label style="display:block; margin-bottom:6px;">Horarios disponiveis:</label>
+      <div id="remarcarHorarios" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+      <div id="remarcarSelecionado" style="margin-top:6px; font-size:12px; color:#555;"></div>
     </div>
 
     <button id="btnConfirmarRemarcar" type="button">Salvar remarcacao</button>
+    <button id="btnApagarRemarcar" type="button" class="btn-secundario" style="background:#fee2e2;color:#991b1b;">Apagar agendamento</button>
     <button id="btnCancelarRemarcar" type="button" class="btn-secundario">Cancelar</button>
   </div>
 </div>

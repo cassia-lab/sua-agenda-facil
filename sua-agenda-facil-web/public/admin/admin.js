@@ -26,10 +26,11 @@ const btnSalvarPadraoCompleto = document.getElementById("btnSalvarPadraoCompleto
 const listaFechadosForaPadrao = document.getElementById("listaFechadosForaPadrao");
 const modalRemarcar = document.getElementById("modalRemarcar");
 const remarcarInfo = document.getElementById("remarcarInfo");
-const remarcarData = document.getElementById("remarcarData");
-const remarcarInicio = document.getElementById("remarcarInicio");
-const remarcarFim = document.getElementById("remarcarFim");
+const remarcarCalendario = document.getElementById("remarcarCalendario");
+const remarcarHorarios = document.getElementById("remarcarHorarios");
+const remarcarSelecionado = document.getElementById("remarcarSelecionado");
 const btnConfirmarRemarcar = document.getElementById("btnConfirmarRemarcar");
+const btnApagarRemarcar = document.getElementById("btnApagarRemarcar");
 const btnCancelarRemarcar = document.getElementById("btnCancelarRemarcar");
 
 const btnLimparAgendamentos = document.getElementById("btnLimparAgendamentos");
@@ -572,19 +573,298 @@ function hhmm(min) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-function abrirModalRemarcar(ag, dia) {
-  if (!modalRemarcar || !remarcarData || !remarcarInicio || !remarcarFim) return;
+function obterDuracaoAgendamento(ag, servicosMap) {
+  const id = Number(ag?.service_id);
+  const durServ = servicosMap?.get(id)?.duration_minutes;
+  const durNum = Number(durServ);
+  if (Number.isFinite(durNum) && durNum > 0) return durNum;
+
+  const fallback = Number(ag?.end) - Number(ag?.start);
+  if (Number.isFinite(fallback) && fallback > 0) return fallback;
+
+  return 30;
+}
+
+async function obterServicosMap() {
+  if (servicosCache) return servicosCache;
+  let servicos = [];
+  try {
+    servicos = await carregarServicosAPI();
+  } catch (e) {
+    console.error("Erro carregando servicos para remarcar:", e);
+  }
+  const map = new Map();
+  servicos.forEach((s) => {
+    if (s?.id != null) map.set(Number(s.id), s);
+  });
+  servicosCache = map;
+  return map;
+}
+
+async function renderRemarcarCalendario() {
+  if (!remarcarCalendario) return;
+
+  const ano = remarcarMesAtual.getFullYear();
+  const mes = remarcarMesAtual.getMonth();
+
+  remarcarCalendario.innerHTML = "";
+
+  let resumo = [];
+  try {
+    const servicosMap = await obterServicosMap();
+    const duracao = obterDuracaoAgendamento(remarcarAgendamento, servicosMap);
+    resumo = await carregarResumoMes(ano, mes + 1, duracao);
+  } catch (e) {
+    console.error("Erro carregando resumo do remarcar:", e);
+  }
+
+  const mapa = {};
+  resumo.forEach((r) => {
+    if (r?.day) mapa[r.day] = r;
+  });
+
+  const header = document.createElement("div");
+  header.style.display = "flex";
+  header.style.alignItems = "center";
+  header.style.justifyContent = "space-between";
+  header.style.gap = "10px";
+  header.style.marginBottom = "8px";
+
+  const btnPrev = document.createElement("button");
+  btnPrev.type = "button";
+  btnPrev.textContent = "<";
+  btnPrev.style.width = "32px";
+  btnPrev.style.height = "32px";
+  btnPrev.style.borderRadius = "999px";
+  btnPrev.style.border = "1px solid #e5e7eb";
+  btnPrev.style.background = "#fff";
+  btnPrev.onclick = () => {
+    remarcarMesAtual = new Date(ano, mes - 1, 1);
+    renderRemarcarCalendario();
+  };
+
+  const titulo = document.createElement("strong");
+  titulo.textContent = `${nomeMes(mes)} ${ano}`;
+
+  const btnNext = document.createElement("button");
+  btnNext.type = "button";
+  btnNext.textContent = ">";
+  btnNext.style.width = "32px";
+  btnNext.style.height = "32px";
+  btnNext.style.borderRadius = "999px";
+  btnNext.style.border = "1px solid #e5e7eb";
+  btnNext.style.background = "#fff";
+  btnNext.onclick = () => {
+    remarcarMesAtual = new Date(ano, mes + 1, 1);
+    renderRemarcarCalendario();
+  };
+
+  header.appendChild(btnPrev);
+  header.appendChild(titulo);
+  header.appendChild(btnNext);
+  remarcarCalendario.appendChild(header);
+
+  const grid = document.createElement("div");
+  grid.style.display = "grid";
+  grid.style.gridTemplateColumns = "repeat(7, 1fr)";
+  grid.style.gap = "6px";
+
+  const diasSemana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"];
+  diasSemana.forEach((d) => {
+    const h = document.createElement("div");
+    h.textContent = d;
+    h.style.fontWeight = "bold";
+    h.style.fontSize = "12px";
+    grid.appendChild(h);
+  });
+
+  const primeiro = new Date(ano, mes, 1);
+  const offset = primeiro.getDay();
+  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+
+  for (let i = 0; i < offset; i++) {
+    const vazio = document.createElement("div");
+    grid.appendChild(vazio);
+  }
+
+  for (let dia = 1; dia <= diasNoMes; dia++) {
+    const diaStr = formatYYYYMMDD(ano, mes + 1, dia);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = String(dia);
+    btn.style.padding = "8px 0";
+    btn.style.borderRadius = "12px";
+    btn.style.border = "1px solid #e5e7eb";
+    btn.style.background = "#fff";
+    btn.style.fontWeight = "600";
+
+    const info = mapa[diaStr];
+    if (info) {
+      const status = info?.status;
+      if (status === "closed") {
+        btn.style.background = "#e5e7eb";
+        btn.style.color = "#6b7280";
+        btn.style.borderColor = "#e5e7eb";
+      } else if (status === "full") {
+        btn.style.background = "#fecaca";
+        btn.style.color = "#7f1d1d";
+        btn.style.borderColor = "#fecaca";
+      } else if (status === "free") {
+        btn.style.background = "#bbf7d0";
+        btn.style.color = "#166534";
+        btn.style.borderColor = "#bbf7d0";
+      }
+    }
+
+    if (diaStr === remarcarDiaSelecionado) {
+      btn.style.background = "#d16c8a";
+      btn.style.color = "#fff";
+      btn.style.borderColor = "#d16c8a";
+    }
+
+    btn.onclick = () => selecionarDiaRemarcar(diaStr);
+    grid.appendChild(btn);
+  }
+
+  remarcarCalendario.appendChild(grid);
+}
+function selecionarDiaRemarcar(dia) {
+  remarcarDiaSelecionado = dia;
+  renderRemarcarCalendario();
+  carregarHorariosRemarcar(dia);
+}
+
+async function carregarHorariosRemarcar(dia) {
+  if (!remarcarHorarios || !btnConfirmarRemarcar) return;
+
+  remarcarHorarios.innerHTML = "";
+  if (remarcarSelecionado) remarcarSelecionado.textContent = "";
+  remarcarHorarioSelecionado = null;
+  btnConfirmarRemarcar.disabled = true;
+  btnConfirmarRemarcar.style.opacity = "0.6";
+
+  if (!dia) {
+    remarcarHorarios.textContent = "Selecione uma data.";
+    return;
+  }
+
+  if (!remarcarAgendamento) return;
+
+  let config;
+  try {
+    config = await carregarConfigDoDia(dia);
+  } catch (e) {
+    console.error("Erro buscando config:", e);
+    remarcarHorarios.textContent = "Erro ao carregar configuracao.";
+    return;
+  }
+
+  if (config.fechado) {
+    remarcarHorarios.textContent = "Dia fechado para atendimento.";
+    return;
+  }
+
+  const inicio = Number(config.diaInicio);
+  const fim = Number(config.diaFim);
+  const almocoIni = Number(config.almocoInicio);
+  const almocoFim = Number(config.almocoFim);
+
+  if (!Number.isFinite(inicio) || !Number.isFinite(fim) || fim <= inicio) {
+    remarcarHorarios.textContent = "Configuracao do dia invalida.";
+    return;
+  }
+
+  let ags = [];
+  try {
+    ags = await carregarAgendamentosDoDia(dia);
+  } catch (e) {
+    console.error("Erro buscando agendamentos:", e);
+    remarcarHorarios.textContent = "Erro ao carregar agendamentos.";
+    return;
+  }
+
+  ags = ags.filter((a) => a.id !== remarcarAgendamento.id);
+
+  const servicosMap = await obterServicosMap();
+  const duracao = obterDuracaoAgendamento(remarcarAgendamento, servicosMap);
+  const passo = 30;
+
+  const slots = [];
+  for (let start = inicio; start + duracao <= fim; start += passo) {
+    const end = start + duracao;
+
+    const emAlmoco =
+      Number.isFinite(almocoIni) && Number.isFinite(almocoFim) &&
+      start < almocoFim && end > almocoIni;
+
+    if (emAlmoco) continue;
+
+    const conflito = ags.some((a) => a.start < end && a.end > start);
+    if (conflito) continue;
+
+    slots.push({ start, end });
+  }
+
+  if (!slots.length) {
+    remarcarHorarios.textContent = "Sem horarios disponiveis para esse dia.";
+    return;
+  }
+
+  slots.forEach((slot) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = `${minutosParaHHMM(slot.start)} - ${minutosParaHHMM(slot.end)}`;
+    btn.style.padding = "6px 10px";
+    btn.style.borderRadius = "10px";
+    btn.style.border = "1px solid #e5e7eb";
+    btn.style.background = "#fff";
+    btn.style.fontSize = "12px";
+    btn.style.fontWeight = "600";
+    btn.style.color = "#333";
+
+    btn.onclick = () => {
+      remarcarHorarioSelecionado = { ...slot };
+      Array.from(remarcarHorarios.children).forEach((el) => {
+        if (el && el.style) {
+          el.style.background = "#fff";
+          el.style.color = "#333";
+          el.style.borderColor = "#e5e7eb";
+        }
+      });
+      btn.style.background = "#d16c8a";
+      btn.style.color = "#fff";
+      btn.style.borderColor = "#d16c8a";
+
+      if (remarcarSelecionado) {
+        remarcarSelecionado.textContent = `Selecionado: ${dia} ${minutosParaHHMM(slot.start)} - ${minutosParaHHMM(slot.end)}`;
+      }
+
+      btnConfirmarRemarcar.disabled = false;
+      btnConfirmarRemarcar.style.opacity = "1";
+    };
+
+    remarcarHorarios.appendChild(btn);
+  });
+}
+
+async function abrirModalRemarcar(ag, dia) {
+  if (!modalRemarcar || !remarcarCalendario || !remarcarHorarios) return;
   remarcarAgendamento = { ...ag, day: dia };
 
   if (remarcarInfo) {
     const nome = ag?.nome || "Cliente";
     const serv = ag?.servico || "Servico";
-    remarcarInfo.textContent = `${nome} - ${serv}`;
+    const tel = ag?.telefone ? String(ag.telefone) : "Sem telefone";
+    remarcarInfo.textContent = `${nome} - ${tel} - ${serv}`;
   }
 
-  remarcarData.value = dia || "";
-  remarcarInicio.value = minutosParaHHMM(Number(ag?.start ?? 0));
-  remarcarFim.value = minutosParaHHMM(Number(ag?.end ?? 0));
+  const diaInicial = dia || new Date().toISOString().slice(0, 10);
+  remarcarDiaSelecionado = diaInicial;
+  remarcarMesAtual = new Date(`${diaInicial}T00:00:00`);
+  remarcarMesAtual.setDate(1);
+
+  renderRemarcarCalendario();
+  await carregarHorariosRemarcar(diaInicial);
 
   modalRemarcar.style.display = "flex";
 }
@@ -592,10 +872,45 @@ function abrirModalRemarcar(ag, dia) {
 function fecharModalRemarcar() {
   if (modalRemarcar) modalRemarcar.style.display = "none";
   remarcarAgendamento = null;
+  remarcarDiaSelecionado = null;
+  remarcarHorarioSelecionado = null;
 }
 
 if (btnCancelarRemarcar) {
   btnCancelarRemarcar.addEventListener("click", () => fecharModalRemarcar());
+}
+
+if (btnApagarRemarcar) {
+  btnApagarRemarcar.addEventListener("click", async () => {
+    if (!remarcarAgendamento) return;
+    const ok = confirm("Deseja apagar este agendamento?");
+    if (!ok) return;
+
+    try {
+      const resp = await fetch(`/api/bookings?id=${encodeURIComponent(remarcarAgendamento.id)}`, {
+        method: "DELETE"
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        alert(json?.error || `Erro ao apagar (HTTP ${resp.status}).`);
+        return;
+      }
+    } catch (e) {
+      console.error("Erro ao apagar agendamento:", e);
+      alert("Nao foi possivel apagar o agendamento.");
+      return;
+    }
+
+    fecharModalRemarcar();
+    const diaAtual = dataAdmin?.value;
+    if (diaAtual) {
+      await renderMapaDoDia(diaAtual);
+      if (typeof renderAgendamentos === "function") {
+        await renderAgendamentos(diaAtual);
+      }
+    }
+    await refreshCalendario();
+  });
 }
 
 if (modalRemarcar) {
@@ -609,17 +924,16 @@ if (modalRemarcar) {
 if (btnConfirmarRemarcar) {
   btnConfirmarRemarcar.addEventListener("click", async () => {
     if (!remarcarAgendamento) return;
-
-    const dia = (remarcarData?.value || "").trim();
-    if (!dia) {
-      alert("Selecione uma data.");
+    if (!remarcarDiaSelecionado || !remarcarHorarioSelecionado) {
+      alert("Selecione um horario disponivel.");
       return;
     }
 
-    const ini = hhmmParaMinutos(remarcarInicio?.value || "");
-    const fim = hhmmParaMinutos(remarcarFim?.value || "");
+    const dia = remarcarDiaSelecionado;
+    const ini = remarcarHorarioSelecionado.start;
+    const fim = remarcarHorarioSelecionado.end;
 
-    if (ini == null || fim == null || fim <= ini) {
+    if (!Number.isFinite(ini) || !Number.isFinite(fim) || fim <= ini) {
       alert("Horario invalido.");
       return;
     }
@@ -658,8 +972,7 @@ if (btnConfirmarRemarcar) {
     }
     await refreshCalendario();
   });
-}
-async function confirmarAgendamentoAdmin(dia, start, telefone, servico) {
+}async function confirmarAgendamentoAdmin(dia, start, telefone, servico) {
   if (!telefone) {
     alert("Esse agendamento nao tem telefone.");
     return;
@@ -1039,7 +1352,12 @@ if (btnLimparAgendamentos) {
   btnLimparAgendamentos.addEventListener("click", () => limparAgendamentos());
 }
 const calendarioCache = new Map();
-let calendarioMesAtual = new Date();let remarcarAgendamento = null;
+let calendarioMesAtual = new Date();
+let remarcarAgendamento = null;
+let remarcarDiaSelecionado = null;
+let remarcarHorarioSelecionado = null;
+let remarcarMesAtual = new Date();
+let servicosCache = null;
 calendarioMesAtual.setDate(1);
 
 function formatYYYYMM(dateObj) {
@@ -1059,18 +1377,26 @@ function nomeMes(idx) {
   return nomes[idx] || "";
 }
 
-async function carregarResumoMes(ano, mes) {
-  const chave = `${ano}-${String(mes).padStart(2, "0")}`;
+async function carregarResumoMes(ano, mes, duracao) {
+  const durKey = Number.isFinite(duracao) && duracao > 0 ? `-${duracao}` : "";
+  const chave = `${ano}-${String(mes).padStart(2, "0")}${durKey}`;
   if (calendarioCache.has(chave)) return calendarioCache.get(chave);
 
-  const resp = await fetch(`/api/bookings/summary?month=${encodeURIComponent(chave)}`, {
+  const params = new URLSearchParams({
+    month: chave.slice(0, 7)
+  });
+  if (Number.isFinite(duracao) && duracao > 0) {
+    params.set("duration", String(duracao));
+  }
+
+  const resp = await fetch(`/api/bookings/summary?${params.toString()}`, {
     cache: "no-store"
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const json = await resp.json();
-  const dias = Array.isArray(json?.days) ? json.days : [];
-  calendarioCache.set(chave, dias);
-  return dias;
+  const days = Array.isArray(json?.days) ? json.days : [];
+  calendarioCache.set(chave, days);
+  return days;
 }
 
 function corPorQuantidade(info) {
@@ -1181,7 +1507,9 @@ async function renderCalendarioMes() {
 
   let resumo = [];
   try {
-    resumo = await carregarResumoMes(ano, mes + 1);
+    const servicosMap = await obterServicosMap();
+    const duracao = obterDuracaoAgendamento(remarcarAgendamento, servicosMap);
+    resumo = await carregarResumoMes(ano, mes + 1, duracao);
   } catch (e) {
     console.error("Erro carregando resumo mensal:", e);
   }

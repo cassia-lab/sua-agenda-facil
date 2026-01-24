@@ -185,7 +185,7 @@ export async function PUT(req: Request) {
 
       const { error: updateError } = await supabase
         .from("bookings")
-        .update({ status: "rescheduled" })
+        .update({ status: "canceled" })
         .eq("id", original.id);
 
       if (updateError) {

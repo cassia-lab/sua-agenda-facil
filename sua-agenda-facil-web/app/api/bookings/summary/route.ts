@@ -124,12 +124,14 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const monthParam = searchParams.get("month");
+    const durationParam = searchParams.get("duration");
     const parsed = parseMonth(monthParam);
     if (!parsed) {
       return NextResponse.json({ error: "Invalid month" }, { status: 400 });
     }
 
     const { year, month } = parsed;
+    const durationOverride = durationParam ? Number(durationParam) : null;
     const start = `${year}-${String(month).padStart(2, "0")}-01`;
     const endDate = new Date(year, month, 1);
     const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-01`;
@@ -192,7 +194,10 @@ export async function GET(req: Request) {
       .filter((s: any) => s?.active !== false)
       .map((s: any) => Number(s?.duration_minutes))
       .filter((n: number) => Number.isFinite(n) && n > 0);
-    const minSlot = activeDurations.length ? Math.min(...activeDurations) : 30;
+    const baseMinSlot = activeDurations.length ? Math.min(...activeDurations) : 30;
+    const minSlot = (Number.isFinite(durationOverride) && (durationOverride as number) > 0)
+      ? Number(durationOverride)
+      : baseMinSlot;
 
     const bookingsByDay: Record<string, any[]> = {};
     (data ?? []).forEach((row: any) => {
