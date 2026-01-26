@@ -149,15 +149,14 @@ export async function GET(req: Request) {
         }
       }
 
-      bookings.push({
-        ...row,
-        service_name: Array.isArray(row?.services)
-          ? row?.services?.[0]?.name ?? null
-          : row?.services?.name ?? null,
-        paid: Boolean(row?.paid),
-        rescheduled_from: row?.rescheduled_from ?? null,
-        can_reschedule: canReschedule
-      });
+bookings.push({
+  ...row,
+  service_name: row?.services?.[0]?.name ?? null,
+  paid: Boolean(row?.paid),
+  rescheduled_from: row?.rescheduled_from ?? null,
+  can_reschedule: canReschedule,
+});
+
     }
 
     return NextResponse.json({ bookings });
