@@ -208,10 +208,36 @@ async function carregarAgendamentosDoDia(dia) {
 }
 
 async function carregarConfigDoDia(dia) {
+  async function carregarDiasFechadosSemana() {
+    if (carregarConfigDoDia._weeklyClosed) return carregarConfigDoDia._weeklyClosed;
+    const resp = await fetch("/api/weekly-closed", { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const json = await resp.json();
+    const days = Array.isArray(json?.days) ? json.days : [];
+    const set = new Set(days.map((d) => Number(d)));
+    carregarConfigDoDia._weeklyClosed = set;
+    return set;
+  }
+
   const resp = await fetch(`/api/day-settings?date=${encodeURIComponent(dia)}`, {
     cache: "no-store"
   });
   if (resp.status === 404) {
+    try {
+      const weeklyClosed = await carregarDiasFechadosSemana();
+      const weekday = new Date(`${dia}T00:00:00`).getDay();
+      if (weeklyClosed.has(weekday)) {
+        return {
+          fechado: true,
+          diaInicio: padrao.diaInicio,
+          diaFim: padrao.diaFim,
+          almocoInicio: padrao.almocoInicio,
+          almocoFim: padrao.almocoFim
+        };
+      }
+    } catch {
+      // ignore weekly closed errors
+    }
     return {
       fechado: false,
       diaInicio: padrao.diaInicio,
@@ -220,12 +246,43 @@ async function carregarConfigDoDia(dia) {
       almocoFim: padrao.almocoFim
     };
   }
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const json = await resp.json();
-  if (!json?.config) throw new Error("Config not found");
+  if (!resp.ok) {
+    console.error("Erro carregando config do dia:", resp.status);
+    return {
+      fechado: false,
+      diaInicio: padrao.diaInicio,
+      diaFim: padrao.diaFim,
+      almocoInicio: padrao.almocoInicio,
+      almocoFim: padrao.almocoFim
+    };
+  }
+  const json = await resp.json().catch(() => ({}));
+  if (!json?.config) {
+    try {
+      const weeklyClosed = await carregarDiasFechadosSemana();
+      const weekday = new Date(`${dia}T00:00:00`).getDay();
+      if (weeklyClosed.has(weekday)) {
+        return {
+          fechado: true,
+          diaInicio: padrao.diaInicio,
+          diaFim: padrao.diaFim,
+          almocoInicio: padrao.almocoInicio,
+          almocoFim: padrao.almocoFim
+        };
+      }
+    } catch {
+      // ignore weekly closed errors
+    }
+    return {
+      fechado: false,
+      diaInicio: padrao.diaInicio,
+      diaFim: padrao.diaFim,
+      almocoInicio: padrao.almocoInicio,
+      almocoFim: padrao.almocoFim
+    };
+  }
   return json.config;
 }
-
 async function salvarConfigDoDia(dia, cfg) {
   const payload = {
     day: dia,
@@ -632,12 +689,16 @@ async function renderRemarcarCalendario() {
 
   const btnPrev = document.createElement("button");
   btnPrev.type = "button";
-  btnPrev.textContent = "<";
+  btnPrev.innerHTML = "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"15 18 9 12 15 6\"/></svg>";
   btnPrev.style.width = "32px";
   btnPrev.style.height = "32px";
   btnPrev.style.borderRadius = "999px";
   btnPrev.style.border = "1px solid #e5e7eb";
   btnPrev.style.background = "#fff";
+  btnPrev.style.fontSize = "20px";
+  btnPrev.style.fontWeight = "700";
+  btnPrev.style.color = "#111827";
+  btnPrev.style.lineHeight = "1";
   btnPrev.onclick = () => {
     remarcarMesAtual = new Date(ano, mes - 1, 1);
     renderRemarcarCalendario();
@@ -648,12 +709,16 @@ async function renderRemarcarCalendario() {
 
   const btnNext = document.createElement("button");
   btnNext.type = "button";
-  btnNext.textContent = ">";
+  btnNext.innerHTML = "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"9 18 15 12 9 6\"/></svg>";
   btnNext.style.width = "32px";
   btnNext.style.height = "32px";
   btnNext.style.borderRadius = "999px";
   btnNext.style.border = "1px solid #e5e7eb";
   btnNext.style.background = "#fff";
+  btnNext.style.fontSize = "20px";
+  btnNext.style.fontWeight = "700";
+  btnNext.style.color = "#111827";
+  btnNext.style.lineHeight = "1";
   btnNext.onclick = () => {
     remarcarMesAtual = new Date(ano, mes + 1, 1);
     renderRemarcarCalendario();
@@ -789,9 +854,16 @@ async function carregarHorariosRemarcar(dia) {
   const duracao = obterDuracaoAgendamento(remarcarAgendamento, servicosMap);
   const passo = 30;
 
+  const hojeStr = new Date().toISOString().slice(0, 10);
+  const agoraMin = dia === hojeStr
+    ? (new Date().getHours() * 60 + new Date().getMinutes())
+    : null;
+
   const slots = [];
   for (let start = inicio; start + duracao <= fim; start += passo) {
     const end = start + duracao;
+
+    if (agoraMin != null && start < agoraMin) continue;
 
     const emAlmoco =
       Number.isFinite(almocoIni) && Number.isFinite(almocoFim) &&
@@ -909,6 +981,9 @@ if (btnApagarRemarcar) {
         await renderAgendamentos(diaAtual);
       }
     }
+    if (typeof calendarioCache !== "undefined" && calendarioCache) {
+      calendarioCache.clear();
+    }
     await refreshCalendario();
   });
 }
@@ -944,6 +1019,7 @@ if (btnConfirmarRemarcar) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "reschedule",
+          force: true,
           id: remarcarAgendamento.id,
           day: dia,
           start_min: ini,
@@ -1034,10 +1110,14 @@ async function apagarAgendamentoAdmin(dia, start) {
   }
 
   await renderMapaDoDia(dia);
+  if (typeof renderAgendamentos === "function") {
+    await renderAgendamentos(dia);
+  }
+  if (typeof calendarioCache !== "undefined" && calendarioCache) {
+    calendarioCache.clear();
+  }
+  await refreshCalendario();
 }
-
-
-
 // ================== HELPERS ==================
 function minutosParaHHMM(minutos) {
   const h = Math.floor(minutos / 60);
@@ -1644,6 +1724,9 @@ async function salvarDiasDescanso(silent = false) {
   }
 
   if (!silent) alert("Dias de descanso salvos.");
+  if (typeof carregarConfigDoDia === "function") {
+    delete carregarConfigDoDia._weeklyClosed;
+  }
   if (painelAgendamentos && painelAgendamentos.style.display === "block") {
     await renderCalendarioMes();
   }

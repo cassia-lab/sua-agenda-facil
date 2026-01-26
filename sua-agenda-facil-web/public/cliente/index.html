@@ -11,7 +11,7 @@
 <body class="client-page">
 
 <!-- Modal de confirmacao (dentro do body) -->
-<div id="modalConfirmacao" class="modal" style="display:none;">
+<div id="modalConfirmacao" class="modal" hidden>
   <div class="modal-card">
     <h3 id="modalTitulo">Informe seus dados para agendar</h3>
 
@@ -38,6 +38,43 @@
 
     <button id="btnConfirmarModal" type="button">Confirmar</button>
     <button id="btnCancelarModal" type="button" class="btn-secundario">Cancelar</button>
+  </div>
+</div>
+
+<!-- Modal de remarcar agendamento -->
+<div id="modalRemarcacao" class="modal" hidden>
+  <div class="modal-card reschedule-card">
+    <h3>Remarcar agendamento</h3>
+    <div id="rescheduleInfo" class="reschedule-info"></div>
+
+    <div class="reschedule-cal">
+      <div class="reschedule-month">
+        <button id="btnReschedulePrev" class="icon-btn" type="button">&lt;</button>
+        <span id="rescheduleMonthLabel" class="month-label"></span>
+        <button id="btnRescheduleNext" class="icon-btn" type="button">&gt;</button>
+      </div>
+      <div class="weekdays-row small">
+        <span>Dom</span>
+        <span>Seg</span>
+        <span>Ter</span>
+        <span>Qua</span>
+        <span>Qui</span>
+        <span>Sex</span>
+        <span>Sab</span>
+      </div>
+      <div class="calendar-grid reschedule-grid" id="rescheduleCalendarGrid"></div>
+    </div>
+
+    <div class="reschedule-slots">
+      <div class="times-header">
+        <span>Horarios disponiveis</span>
+      </div>
+      <div id="rescheduleSlots" class="horarios-grid reschedule-slots-grid"></div>
+      <div id="rescheduleMsg" class="my-bookings-msg"></div>
+    </div>
+
+    <button id="btnSalvarRemarcacao" type="button">Salvar remarcacao</button>
+    <button id="btnCancelarRemarcacao" type="button" class="btn-secundario">Cancelar</button>
   </div>
 </div>
 
@@ -84,6 +121,25 @@
       <div class="horarios-grid" id="horarios"></div>
       <div id="msgSucesso" class="msg-sucesso" style="display:none;"></div>
       <p class="aviso">Leva menos de 1 minuto para agendar</p>
+    </section>
+
+    <section class="bookings-card">
+      <div class="times-header">
+        <span>Meus agendamentos</span>
+      </div>
+      <label for="myBookingsPhone">Seu WhatsApp</label>
+      <input
+        type="tel"
+        id="myBookingsPhone"
+        placeholder="Digite seu WhatsApp (DDD + numero)"
+        inputmode="numeric"
+        pattern="[0-9]*"
+        maxlength="15"
+        autocomplete="tel"
+      />
+      <button id="btnBuscarBookings" type="button">Buscar</button>
+      <div id="myBookingsMsg" class="my-bookings-msg"></div>
+      <div id="myBookingsList" class="my-bookings-list"></div>
     </section>
 
     <input type="date" id="data" class="visually-hidden" />

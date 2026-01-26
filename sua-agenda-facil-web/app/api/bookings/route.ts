@@ -13,6 +13,62 @@ function getWeekday(day: string) {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
+function formatDayLocal(dateObj: Date) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const d = String(dateObj.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function dateFromDayMin(day: string, minutes: number) {
+  const [y, m, d] = day.split("-").map(Number);
+  const hh = Math.floor(minutes / 60);
+  const mm = minutes % 60;
+  return new Date(y, m - 1, d, hh, mm, 0, 0);
+}
+
+async function loadWeeklyClosedSet(supabase: ReturnType<typeof getSupabase>) {
+  const { data, error } = await supabase.from("weekly_closed").select("weekday");
+  if (error) throw error;
+  return new Set<number>(
+    (data ?? [])
+      .map((row: any) => Number(row?.weekday))
+      .filter((d: number) => Number.isFinite(d) && d >= 0 && d <= 6)
+  );
+}
+
+async function hasDayException(supabase: ReturnType<typeof getSupabase>, day: string) {
+  const { data, error } = await supabase
+    .from("day_settings")
+    .select("day")
+    .eq("day", day)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function loadDefaultEndMin(supabase: ReturnType<typeof getSupabase>) {
+  const { data, error } = await supabase
+    .from("default_settings")
+    .select("dia_fim")
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  const endMin = Number(data?.dia_fim ?? 17 * 60);
+  return Number.isFinite(endMin) ? endMin : 17 * 60;
+}
+
+async function isOpenDayForReschedule(
+  supabase: ReturnType<typeof getSupabase>,
+  weeklySet: Set<number>,
+  day: string
+) {
+  if (await hasDayException(supabase, day)) return false;
+  const weekday = getWeekday(day);
+  if (weeklySet.has(weekday)) return false;
+  return true;
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -91,6 +147,7 @@ export async function PUT(req: Request) {
       const day = rawDay.includes("T") ? rawDay.split("T")[0] : rawDay;
       const start = Number(body?.start_min ?? body?.start);
       const end = Number(body?.end_min ?? body?.end);
+      const force = Boolean(body?.force);
 
       if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
         return NextResponse.json({ error: "Invalid day" }, { status: 400 });
@@ -112,36 +169,42 @@ export async function PUT(req: Request) {
         return NextResponse.json({ error: "Booking not found" }, { status: 404 });
       }
 
-      const { data: dayCfg, error: cfgError } = await supabase
-        .from("day_settings")
-        .select("day, fechado")
-        .eq("day", day)
-        .maybeSingle();
+      const weeklySet = await loadWeeklyClosedSet(supabase);
+      const defaultEndMin = await loadDefaultEndMin(supabase);
 
-      if (cfgError) {
-        return NextResponse.json({ error: cfgError.message }, { status: 500 });
-      }
-      if (dayCfg?.fechado) {
-        return NextResponse.json({ error: "Day closed" }, { status: 409 });
-      }
+      const origStartMin = Number(original.start_min);
+      const origStartDate = dateFromDayMin(String(original.day), origStartMin);
+      let cutoff = new Date(origStartDate.getTime() - 24 * 60 * 60 * 1000);
+      let cutoffDay = formatDayLocal(cutoff);
 
-      if (!dayCfg) {
-        const weekday = getWeekday(day);
-        if (weekday >= 0) {
-          const { data: weeklyClosed, error: weeklyError } = await supabase
-            .from("weekly_closed")
-            .select("weekday")
-            .eq("weekday", weekday)
-            .limit(1);
-
-          if (weeklyError) {
-            return NextResponse.json({ error: weeklyError.message }, { status: 500 });
-          }
-
-          if (weeklyClosed && weeklyClosed.length > 0) {
-            return NextResponse.json({ error: "Day closed" }, { status: 409 });
+      if (!await isOpenDayForReschedule(supabase, weeklySet, cutoffDay)) {
+        let cursor = new Date(cutoff);
+        let found = false;
+        for (let i = 0; i < 60; i++) {
+          cursor.setDate(cursor.getDate() - 1);
+          const dayStr = formatDayLocal(cursor);
+          if (await isOpenDayForReschedule(supabase, weeklySet, dayStr)) {
+            cutoff = dateFromDayMin(dayStr, defaultEndMin);
+            found = true;
+            break;
           }
         }
+        if (!found) {
+          return NextResponse.json({ error: "Reschedule window closed" }, { status: 409 });
+        }
+      }
+
+      if (!force && Date.now() > cutoff.getTime()) {
+        return NextResponse.json({ error: "Reschedule window closed" }, { status: 409 });
+      }
+
+      if (await hasDayException(supabase, day)) {
+        return NextResponse.json({ error: "Day not allowed for reschedule" }, { status: 409 });
+      }
+
+      const weekday = getWeekday(day);
+      if (weeklySet.has(weekday)) {
+        return NextResponse.json({ error: "Day closed" }, { status: 409 });
       }
 
       const { data: conflicts, error: conflictError } = await supabase
