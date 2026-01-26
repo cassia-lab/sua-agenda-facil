@@ -5,7 +5,10 @@ const DEFAULT_CONFIG = {
   diaInicio: 8 * 60,
   diaFim: 17 * 60,
   almocoInicio: 12 * 60,
-  almocoFim: 13 * 60
+  almocoFim: 13 * 60,
+  studioNome: "",
+  studioEndereco: "",
+  pixChave: ""
 };
 
 function getSupabase() {
@@ -19,7 +22,10 @@ function normalizeRow(row: any) {
     diaInicio: Number(row?.dia_inicio ?? DEFAULT_CONFIG.diaInicio),
     diaFim: Number(row?.dia_fim ?? DEFAULT_CONFIG.diaFim),
     almocoInicio: Number(row?.almoco_inicio ?? DEFAULT_CONFIG.almocoInicio),
-    almocoFim: Number(row?.almoco_fim ?? DEFAULT_CONFIG.almocoFim)
+    almocoFim: Number(row?.almoco_fim ?? DEFAULT_CONFIG.almocoFim),
+    studioNome: String(row?.studio_nome ?? DEFAULT_CONFIG.studioNome),
+    studioEndereco: String(row?.studio_endereco ?? DEFAULT_CONFIG.studioEndereco),
+    pixChave: String(row?.pix_chave ?? DEFAULT_CONFIG.pixChave)
   };
 }
 
@@ -28,7 +34,7 @@ export async function GET() {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("default_settings")
-      .select("dia_inicio, dia_fim, almoco_inicio, almoco_fim")
+      .select("dia_inicio, dia_fim, almoco_inicio, almoco_fim, studio_nome, studio_endereco, pix_chave")
       .limit(1)
       .maybeSingle();
 
@@ -59,6 +65,9 @@ export async function PUT(req: Request) {
     const diaFim = Number(body?.diaFim);
     const almocoInicio = Number(body?.almocoInicio);
     const almocoFim = Number(body?.almocoFim);
+    const studioNome = typeof body?.studioNome === "string" ? body.studioNome.trim() : "";
+    const studioEndereco = typeof body?.studioEndereco === "string" ? body.studioEndereco.trim() : "";
+    const pixChave = typeof body?.pixChave === "string" ? body.pixChave.trim() : "";
 
     if (!Number.isFinite(diaInicio) || !Number.isFinite(diaFim)) {
       return NextResponse.json({ error: "Invalid diaInicio/diaFim" }, { status: 400 });
@@ -78,7 +87,10 @@ export async function PUT(req: Request) {
       dia_inicio: diaInicio,
       dia_fim: diaFim,
       almoco_inicio: almocoInicio,
-      almoco_fim: almocoFim
+      almoco_fim: almocoFim,
+      studio_nome: studioNome,
+      studio_endereco: studioEndereco,
+      pix_chave: pixChave
     };
 
     const { data: existing, error: existingError } = await supabase
@@ -98,7 +110,7 @@ export async function PUT(req: Request) {
         .from("default_settings")
         .update(payload)
         .eq("id", existing.id)
-        .select("dia_inicio, dia_fim, almoco_inicio, almoco_fim")
+        .select("dia_inicio, dia_fim, almoco_inicio, almoco_fim, studio_nome, studio_endereco, pix_chave")
         .maybeSingle();
       data = result.data;
       error = result.error;
@@ -106,7 +118,7 @@ export async function PUT(req: Request) {
       const result = await supabase
         .from("default_settings")
         .insert(payload)
-        .select("dia_inicio, dia_fim, almoco_inicio, almoco_fim")
+        .select("dia_inicio, dia_fim, almoco_inicio, almoco_fim, studio_nome, studio_endereco, pix_chave")
         .maybeSingle();
       data = result.data;
       error = result.error;

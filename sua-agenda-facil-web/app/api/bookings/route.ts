@@ -142,6 +142,51 @@ export async function PUT(req: Request) {
       return NextResponse.json({ booking: data });
     }
 
+    if (action === "mark_reminder_7d" || action === "mark_reminder_24h") {
+      const updates: any = {};
+      if (action === "mark_reminder_7d") {
+        updates.reminder_7d_sent_at = new Date().toISOString();
+      } else {
+        updates.reminder_24h_sent_at = new Date().toISOString();
+      }
+
+      const { data, error } = await supabase
+        .from("bookings")
+        .update(updates)
+        .eq("id", id)
+        .select("id, reminder_7d_sent_at, reminder_24h_sent_at")
+        .maybeSingle();
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      if (!data) {
+        return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+      }
+      return NextResponse.json({ booking: data });
+    }
+
+    if (action === "mark_pix_sent") {
+      const updates: any = {
+        pix_sent_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabase
+        .from("bookings")
+        .update(updates)
+        .eq("id", id)
+        .select("id, pix_sent_at")
+        .maybeSingle();
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      if (!data) {
+        return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+      }
+      return NextResponse.json({ booking: data });
+    }
+
     if (action === "reschedule") {
       const rawDay = typeof body?.day === "string" ? body.day.trim() : "";
       const day = rawDay.includes("T") ? rawDay.split("T")[0] : rawDay;

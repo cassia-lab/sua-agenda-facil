@@ -62,7 +62,20 @@
   </div>
 <div id="listaAgendamentos"></div>
 
+<button id="btnTogglePagamentos" class="btn-toggle">Pagamento pendente</button>
+<div id="painelPagamentos" class="card" style="margin-top:12px; display:none;">
+  <div class="card-title">Pagamento pendente</div>
+  <div id="listaPagamentosPendentes" class="admin-lista"></div>
+</div>
 
+<button id="btnToggleLembretes" class="btn-toggle">Lembretes</button>
+<div id="painelLembretes" class="card" style="margin-top:12px; display:none;">
+  <div class="card-title">Lembretes</div>
+  <div class="card-sub">7 dias antes</div>
+  <div id="listaLembretes7d" class="admin-lista"></div>
+  <div class="card-sub" style="margin-top:10px;">24h antes (pagos)</div>
+  <div id="listaLembretes24h" class="admin-lista"></div>
+</div>
 
 <hr style="margin:30px 0;" />
       
@@ -70,7 +83,7 @@
 
 <!-- BOTÃO: horários -->
 <button id="btnToggleHorarios" class="btn-toggle">
-  ⚙️ Configurar horários
+  Configuracao do Studio
 </button>
 
 
@@ -168,6 +181,26 @@
       </div>
     </div>
   </div>
+
+  <button id="btnToggleInfoStudio" class="btn-toggle btn-sub">Informacoes do Studio</button>
+  <div id="secInfoStudio" style="display:none; margin-top:10px;">
+    <div class="horarios-panel">
+      <div class="card">
+        <div class="card-title">Informacoes do Studio</div>
+
+        <label>Nome do Studio:</label>
+        <input type="text" id="studioNome" placeholder="Ex: Geisi Nails" />
+
+        <label>Endereco:</label>
+        <input type="text" id="studioEndereco" placeholder="Ex: Rua X, 123" />
+
+        <label>Chave PIX:</label>
+        <input type="text" id="studioPixChave" placeholder="Chave PIX" />
+
+        <button id="btnSalvarInfoStudio" type="button" class="btn-ghost">Salvar informacoes</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- BOTÃO: serviços -->
@@ -218,6 +251,7 @@
 </body>
 
 </html>
+
 
 
 
