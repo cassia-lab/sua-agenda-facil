@@ -68,13 +68,23 @@
   <div id="listaPagamentosPendentes" class="admin-lista"></div>
 </div>
 
-<button id="btnToggleLembretes" class="btn-toggle">Lembretes</button>
+<button id="btnToggleLembretes" class="btn-toggle">Mensagens de confirmacao</button>
 <div id="painelLembretes" class="card" style="margin-top:12px; display:none;">
   <div class="card-title">Lembretes</div>
-  <div class="card-sub">7 dias antes</div>
-  <div id="listaLembretes7d" class="admin-lista"></div>
-  <div class="card-sub" style="margin-top:10px;">24h antes (pagos)</div>
-  <div id="listaLembretes24h" class="admin-lista"></div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap; margin:8px 0;">
+    <div style="width:100%;">
+      <button id="btnToggleLembretes7d" type="button" class="btn-toggle">7 dias antes</button>
+      <div id="painelLembretes7d" style="display:none; margin-top:8px;">
+        <div id="listaLembretes7d" class="admin-lista"></div>
+      </div>
+    </div>
+    <div style="width:100%; margin-top:6px;">
+      <button id="btnToggleLembretes24h" type="button" class="btn-toggle">24h antes</button>
+      <div id="painelLembretes24h" style="display:none; margin-top:8px;">
+        <div id="listaLembretes24h" class="admin-lista"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <hr style="margin:30px 0;" />

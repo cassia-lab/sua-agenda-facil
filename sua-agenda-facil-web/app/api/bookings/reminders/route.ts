@@ -49,24 +49,23 @@ export async function GET(req: Request) {
       .order("day", { ascending: true })
       .order("start_min", { ascending: true });
 
-    if (type === "24h") {
-      query = query.eq("paid", true);
-    }
-
     const { data, error } = await query;
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const minHours = type === "7d" ? 6 * 24 : 12;
-    const maxHours = type === "7d" ? 8 * 24 : 36;
+    const minDay = type === "7d" ? formatDayLocal(addDays(now, 3)) : "";
+    const maxDayFor7d = type === "7d" ? formatDayLocal(addDays(now, 8)) : "";
+    const dayTomorrow = type === "24h" ? formatDayLocal(addDays(now, 1)) : "";
 
     const bookings = (data ?? []).filter((row: any) => {
       const startMin = Number(row?.start_min);
       if (!row?.day || !Number.isFinite(startMin)) return false;
-      const dt = bookingDateTime(row.day, startMin);
-      const diffHours = (dt.getTime() - now.getTime()) / 3600000;
-      if (diffHours < minHours || diffHours > maxHours) return false;
+      if (type === "24h") {
+        if (row.day !== dayTomorrow) return false;
+      } else {
+        if (row.day < minDay || row.day > maxDayFor7d) return false;
+      }
       if (type === "7d" && row?.reminder_7d_sent_at) return false;
       if (type === "24h" && row?.reminder_24h_sent_at) return false;
       return true;

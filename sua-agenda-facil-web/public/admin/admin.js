@@ -64,8 +64,13 @@ const agendaDetalheLista = document.getElementById("agendaDetalheLista");
 const agendaDetalhePopover = document.getElementById("agendaDetalhePopover");
 const agendaDetalheFechar = document.getElementById("agendaDetalheFechar");
 const listaPagamentosPendentes = document.getElementById("listaPagamentosPendentes");
+const painelLembretes = document.getElementById("painelLembretes");
 const listaLembretes7d = document.getElementById("listaLembretes7d");
 const listaLembretes24h = document.getElementById("listaLembretes24h");
+const btnToggleLembretes7d = document.getElementById("btnToggleLembretes7d");
+const btnToggleLembretes24h = document.getElementById("btnToggleLembretes24h");
+const painelLembretes7d = document.getElementById("painelLembretes7d");
+const painelLembretes24h = document.getElementById("painelLembretes24h");
 const studioNomeInput = document.getElementById("studioNome");
 const studioEnderecoInput = document.getElementById("studioEndereco");
 const studioPixChaveInput = document.getElementById("studioPixChave");
@@ -73,7 +78,6 @@ const btnSalvarInfoStudio = document.getElementById("btnSalvarInfoStudio");
 const btnTogglePagamentos = document.getElementById("btnTogglePagamentos");
 const painelPagamentos = document.getElementById("painelPagamentos");
 const btnToggleLembretes = document.getElementById("btnToggleLembretes");
-const painelLembretes = document.getElementById("painelLembretes");
 
 
 
@@ -115,6 +119,8 @@ if (btnToggleInfoStudio) btnToggleInfoStudio.addEventListener("click", () => tog
 if (btnToggleServicos) btnToggleServicos.addEventListener("click", () => toggleSection(secServicos));
 if (btnTogglePagamentos) btnTogglePagamentos.addEventListener("click", () => toggleSection(painelPagamentos));
 if (btnToggleLembretes) btnToggleLembretes.addEventListener("click", () => toggleSection(painelLembretes));
+if (btnToggleLembretes7d) btnToggleLembretes7d.addEventListener("click", () => toggleSection(painelLembretes7d));
+if (btnToggleLembretes24h) btnToggleLembretes24h.addEventListener("click", () => toggleSection(painelLembretes24h));
 if (btnVerAgendamentos) btnVerAgendamentos.addEventListener("click", async () => {
   const aberto = painelAgendamentos && painelAgendamentos.style.display === "block";
   if (painelAgendamentos) painelAgendamentos.style.display = aberto ? "none" : "block";
@@ -314,6 +320,122 @@ function nomeServico(ag) {
   return ag?.service_name || ag?.servico || ag?.service || "Servico";
 }
 
+async function carregarLembretes() {
+  await carregarLembretesTipo("7d");
+  await carregarLembretesTipo("24h");
+}
+
+async function carregarLembretesTipo(tipo) {
+  const alvo = tipo === "7d" ? listaLembretes7d : listaLembretes24h;
+  if (!alvo) return;
+  alvo.textContent = "Carregando...";
+
+  let lista = [];
+  try {
+    const resp = await fetch(`/api/bookings/reminders?type=${encodeURIComponent(tipo)}`, {
+      cache: "no-store"
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const json = await resp.json();
+    lista = Array.isArray(json?.bookings) ? json.bookings : [];
+  } catch (e) {
+    console.error("Erro ao carregar lembretes:", e);
+    alvo.textContent = "Erro ao carregar lembretes.";
+    return;
+  }
+
+  if (!lista.length) {
+    alvo.textContent = "Sem lembretes pendentes.";
+    return;
+  }
+
+  const agrupado = {};
+  lista.forEach((ag) => {
+    const dia = ag?.day || "";
+    if (!dia) return;
+    if (!agrupado[dia]) agrupado[dia] = [];
+    agrupado[dia].push(ag);
+  });
+
+  const dias = Object.keys(agrupado).sort();
+  alvo.innerHTML = "";
+
+  dias.forEach((dia) => {
+    const header = document.createElement("div");
+    header.style.fontWeight = "700";
+    header.style.margin = "8px 0 4px";
+    header.textContent = dataParaBR(dia);
+    alvo.appendChild(header);
+
+    agrupado[dia].forEach((ag) => {
+      const linha = document.createElement("div");
+      linha.style.display = "flex";
+      linha.style.justifyContent = "space-between";
+      linha.style.alignItems = "center";
+      linha.style.gap = "10px";
+      linha.style.borderBottom = "1px solid #eee";
+      linha.style.padding = "8px 0";
+
+      const info = document.createElement("div");
+      info.style.display = "flex";
+      info.style.flexDirection = "column";
+      info.style.gap = "2px";
+      const pagoCor = ag?.paid ? "#22c55e" : "#ef4444";
+      info.innerHTML = `<strong style="display:inline-flex;align-items:center;gap:6px;">
+          <span style="width:8px;height:8px;border-radius:999px;background:${pagoCor};display:inline-block;"></span>
+          ${ag?.client_name || "Cliente"}
+        </strong>
+        <span>${formatarDataHora(ag)} — ${nomeServico(ag)}</span>`;
+
+      const acoes = document.createElement("div");
+      acoes.style.display = "flex";
+      acoes.style.gap = "6px";
+
+      const btnWpp = document.createElement("button");
+      btnWpp.type = "button";
+      btnWpp.textContent = "WhatsApp";
+      btnWpp.style.width = "auto";
+      btnWpp.style.padding = "6px 10px";
+      btnWpp.onclick = async () => {
+        const dataTxt = dataParaBR(ag?.day);
+        const horaTxt = minutosParaHHMM(Number(ag?.start_min));
+        const serv = nomeServico(ag);
+        const texto = tipo === "7d"
+          ? `Oi, ${ag?.client_name || "Cliente"}!\nPassando pra lembrar do seu horario na proxima semana:\n✅ ${dataTxt} as ${horaTxt}\n${serv}.\n\nQualquer ajuste, so ir em reagendar.`
+          : `Oi, ${ag?.client_name || "Cliente"}! Lembrete do seu horario amanha ✅ ${dataTxt} as ${horaTxt} — ${serv}. Se precisar ajustar, me chama por aqui.`;
+        const link = montarLinkWhatsapp(ag?.client_phone, texto);
+        if (!link) {
+          alert("Telefone invalido.");
+          return;
+        }
+        window.open(link, "_blank");
+        try {
+          const resp = await fetch("/api/bookings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: tipo === "7d" ? "mark_reminder_7d" : "mark_reminder_24h",
+              id: ag?.id
+            })
+          });
+          const json = await resp.json().catch(() => ({}));
+          if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
+        } catch (e) {
+          console.error("Erro ao marcar lembrete:", e);
+        }
+        linha.style.background = "#dcfce7";
+        linha.style.borderRadius = "10px";
+        linha.style.padding = "10px";
+      };
+
+      acoes.appendChild(btnWpp);
+      linha.appendChild(info);
+      linha.appendChild(acoes);
+      alvo.appendChild(linha);
+    });
+  });
+}
+
 async function carregarPagamentosPendentes() {
   if (!listaPagamentosPendentes) return;
   listaPagamentosPendentes.textContent = "Carregando...";
@@ -417,7 +539,6 @@ async function carregarPagamentosPendentes() {
         return;
       }
       await carregarPagamentosPendentes();
-      await carregarLembretes();
     };
 
     acoes.appendChild(btnCobrar);
@@ -429,112 +550,6 @@ async function carregarPagamentosPendentes() {
   });
 }
 
-async function carregarLembretes() {
-  await carregarLembretesTipo("7d");
-  await carregarLembretesTipo("24h");
-}
-
-async function carregarLembretesTipo(tipo) {
-  const alvo = tipo === "7d" ? listaLembretes7d : listaLembretes24h;
-  if (!alvo) return;
-  alvo.textContent = "Carregando...";
-
-  let lista = [];
-  try {
-    const resp = await fetch(`/api/bookings/reminders?type=${encodeURIComponent(tipo)}`, {
-      cache: "no-store"
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const json = await resp.json();
-    lista = Array.isArray(json?.bookings) ? json.bookings : [];
-  } catch (e) {
-    console.error("Erro ao carregar lembretes:", e);
-    alvo.textContent = "Erro ao carregar lembretes.";
-    return;
-  }
-
-  if (!lista.length) {
-    alvo.textContent = "Sem lembretes pendentes.";
-    return;
-  }
-
-  alvo.innerHTML = "";
-  lista.forEach((ag) => {
-    const linha = document.createElement("div");
-    linha.style.display = "flex";
-    linha.style.justifyContent = "space-between";
-    linha.style.alignItems = "center";
-    linha.style.gap = "10px";
-    linha.style.borderBottom = "1px solid #eee";
-    linha.style.padding = "8px 0";
-
-    const info = document.createElement("div");
-    info.style.display = "flex";
-    info.style.flexDirection = "column";
-    info.style.gap = "2px";
-    info.innerHTML = `<strong>${ag?.client_name || "Cliente"}</strong>
-      <span>${formatarDataHora(ag)} — ${nomeServico(ag)}</span>`;
-
-    const acoes = document.createElement("div");
-    acoes.style.display = "flex";
-    acoes.style.gap = "6px";
-
-    const btnEnviar = document.createElement("button");
-    btnEnviar.type = "button";
-    btnEnviar.textContent = "Enviar (WhatsApp)";
-    btnEnviar.style.width = "auto";
-    btnEnviar.style.padding = "6px 10px";
-    btnEnviar.onclick = () => {
-      const dataTxt = dataParaBR(ag?.day);
-      const horaTxt = minutosParaHHMM(Number(ag?.start_min));
-      const serv = nomeServico(ag);
-      const studioNome = studioInfo.studioNome || "Studio";
-      const studioEndereco = studioInfo.studioEndereco || "";
-      const enderecoLinha = studioEndereco ? `\nEndereco: ${studioEndereco}` : "";
-      const texto = tipo === "7d"
-        ? `Oi, ${ag?.client_name || "Cliente"}!\n\nLembrete do seu horario na proxima semana:\n${dataTxt} as ${horaTxt} — ${serv}\n\n${studioNome}${enderecoLinha}\n\nQualquer ajuste, me chama por aqui.`
-        : `Oi, ${ag?.client_name || "Cliente"}!\n\nLembrete do seu horario amanha:\n${dataTxt} as ${horaTxt} — ${serv}\n\n${studioNome}${enderecoLinha}\n\nSe precisar ajustar, me chama por aqui.`;
-      const link = montarLinkWhatsapp(ag?.client_phone, texto);
-      if (!link) {
-        alert("Telefone invalido.");
-        return;
-      }
-      window.open(link, "_blank");
-    };
-
-    const btnMarcar = document.createElement("button");
-    btnMarcar.type = "button";
-    btnMarcar.textContent = "Marcar como enviado";
-    btnMarcar.style.width = "auto";
-    btnMarcar.style.padding = "6px 10px";
-    btnMarcar.onclick = async () => {
-      try {
-        const resp = await fetch("/api/bookings", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: tipo === "7d" ? "mark_reminder_7d" : "mark_reminder_24h",
-            id: ag?.id
-          })
-        });
-        const json = await resp.json().catch(() => ({}));
-        if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
-      } catch (e) {
-        console.error("Erro ao marcar lembrete:", e);
-        alert("Nao foi possivel marcar o lembrete.");
-        return;
-      }
-      await carregarLembretesTipo(tipo);
-    };
-
-    acoes.appendChild(btnEnviar);
-    acoes.appendChild(btnMarcar);
-
-    linha.appendChild(info);
-    linha.appendChild(acoes);
-    alvo.appendChild(linha);
-  });
-}
 
 async function carregarConfigDoDia(dia) {
   async function carregarDiasFechadosSemana() {
