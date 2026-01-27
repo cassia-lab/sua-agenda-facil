@@ -665,10 +665,10 @@ async function renderCalendarioRemarcacao() {
     const utc = parseYYYYMMDD(dayStr);
     const excecao = excecoesPorDia.has(dayStr);
     const permitidoPadrao = isDiaPermitidoUTC(utc);
-    const permitido = excecao ? false : permitidoPadrao;
+    const permitido = !excecao && permitidoPadrao;
     const isPast = dayStr < hojeStr;
     const resumoInfo = resumoPorDia.get(dayStr);
-    const status = resumoInfo?.status;
+    const status = excecao ? "closed" : resumoInfo?.status;
 
     const btn = document.createElement("button");
     btn.type = "button";
@@ -726,11 +726,11 @@ async function renderSlotsRemarcacao() {
 
   const dateObjUTC = parseYYYYMMDD(dia);
   const excecaoStatus = getExcecaoStatus(dia);
-  if (excecaoStatus === "closed") {
+  if (excecaoStatus !== null) {
     rescheduleMsg.textContent = "Este dia esta fechado.";
     return;
   }
-  if (!isDiaPermitidoUTC(dateObjUTC) && excecaoStatus !== "open") {
+  if (!isDiaPermitidoUTC(dateObjUTC)) {
     rescheduleMsg.textContent = "Este dia nao esta disponivel para atendimento.";
     return;
   }
@@ -753,7 +753,6 @@ async function renderSlotsRemarcacao() {
   }
 
   if (
-    excecaoStatus !== "open" &&
     !configMeta?.exists &&
     diasDescansoSemana &&
     diasDescansoSemana.has(parseYYYYMMDD(dia).getUTCDay())

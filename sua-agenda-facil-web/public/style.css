@@ -770,6 +770,8 @@ body.client-page {
   margin-top: 10px;
   font-size: 13px;
   color: #6e5060;
+  display: block;
+  word-break: break-word;
 }
 
 .times-header {
@@ -783,6 +785,10 @@ body.client-page {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 10px;
+}
+
+.horarios-grid button[disabled] {
+  display: none;
 }
 
 .horarios-grid button {
@@ -939,5 +945,41 @@ body.modal-open .client-shell {
   .service-card,
   .times-card {
     padding: 14px;
+  }
+
+  .service-card label {
+    font-size: 12px;
+  }
+
+  .service-card select {
+    font-size: 13px;
+  }
+
+  .service-meta {
+    font-size: 12px;
+  }
+
+  .modal-card.reschedule-card {
+    max-width: 94vw;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .reschedule-month {
+    gap: 8px;
+  }
+
+  .reschedule-card .weekdays-row.small {
+    font-size: 10px;
+  }
+
+  .calendar-grid.reschedule-grid {
+    gap: 6px;
+  }
+
+  .calendar-grid.reschedule-grid .day-btn,
+  .calendar-grid.reschedule-grid .calendar-cell {
+    height: 36px;
+    border-radius: 12px;
   }
 }
