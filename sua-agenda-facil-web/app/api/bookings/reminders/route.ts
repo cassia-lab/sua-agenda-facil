@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+function isAdmin(req: Request) {
+  const token = req.headers.get("x-admin-token") || "";
+  const expected = process.env.ADMIN_TOKEN || "";
+  return Boolean(token) && token === expected;
+}
+
 function getSupabase() {
   const SUPABASE_URL = process.env.SUPABASE_URL!;
   const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -28,6 +34,9 @@ function bookingDateTime(day: string, startMin: number) {
 }
 
 export async function GET(req: Request) {
+  if (!isAdmin(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const { searchParams } = new URL(req.url);
     const type = String(searchParams.get("type") || "").trim();

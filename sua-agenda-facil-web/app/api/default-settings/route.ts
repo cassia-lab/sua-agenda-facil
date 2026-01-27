@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+function isAdmin(req: Request) {
+  const token = req.headers.get("x-admin-token") || "";
+  const expected = process.env.ADMIN_TOKEN || "";
+  return Boolean(token) && token === expected;
+}
+
 const DEFAULT_CONFIG = {
   diaInicio: 8 * 60,
   diaFim: 17 * 60,
@@ -29,7 +35,10 @@ function normalizeRow(row: any) {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  if (!isAdmin(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const supabase = getSupabase();
     const { data, error } = await supabase
@@ -53,6 +62,9 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
+  if (!isAdmin(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     let body: any = null;
     try {

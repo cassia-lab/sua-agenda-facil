@@ -46,6 +46,7 @@ let servicosCache = [];
 let calendarioMesAtual = new Date();
 let selectedDia = "";
 let excecoesPorDia = new Map();
+let excecoesMesCache = new Map();
 let calendarioResumoCache = new Map();
 let renderCalendarioSeq = 0;
 let ultimoTelefoneBusca = null;
@@ -53,6 +54,24 @@ let rescheduleState = null;
 let rescheduleMonth = new Date();
 let rescheduleSelectedDay = "";
 let rescheduleSelectedStart = null;
+const excecoesCacheTTL = 60000;
+const dayConfigCache = new Map();
+const bookingsCache = new Map();
+const dayCacheTTL = 30000;
+
+function getCacheEntry(cache, key, ttl) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > ttl) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function setCacheEntry(cache, key, value) {
+  cache.set(key, { ts: Date.now(), value });
+}
 
 // ======== HELPERS ========
 function parseYYYYMMDD(s) {
@@ -181,13 +200,17 @@ function podeRemarcarAgendamento(booking) {
 
 // ======== API ========
 async function carregarConfigDoDia(dia) {
+  const cached = getCacheEntry(dayConfigCache, dia, dayCacheTTL);
+  if (cached) return cached;
   const resp = await fetch(`/api/day-settings?date=${encodeURIComponent(dia)}`, {
     cache: "no-store"
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const json = await resp.json();
   if (!json?.config) throw new Error("Config not found");
-  return { config: json.config, meta: json.meta || { exists: false } };
+  const value = { config: json.config, meta: json.meta || { exists: false } };
+  setCacheEntry(dayConfigCache, dia, value);
+  return value;
 }
 
 async function carregarDiasDescansoCliente() {
@@ -199,6 +222,13 @@ async function carregarDiasDescansoCliente() {
 }
 
 async function carregarExcecoesMes(ano, mes) {
+  const cacheKey = `${ano}-${String(mes).padStart(2, "0")}`;
+  const cached = excecoesMesCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < excecoesCacheTTL) {
+    excecoesPorDia = cached.map;
+    return;
+  }
+
   const mesStr = String(mes).padStart(2, "0");
   const prefix = `${ano}-${mesStr}-`;
   const resp = await fetch("/api/day-settings?limit=500", { cache: "no-store" });
@@ -215,6 +245,7 @@ async function carregarExcecoesMes(ano, mes) {
   });
 
   excecoesPorDia = mapa;
+  excecoesMesCache.set(cacheKey, { ts: Date.now(), map: mapa });
 }
 
 async function carregarResumoMesCliente(ano, mes, duracao) {
@@ -239,6 +270,8 @@ async function carregarResumoMesCliente(ano, mes, duracao) {
 }
 
 async function carregarBookingsAPI(dia) {
+  const cached = getCacheEntry(bookingsCache, dia, dayCacheTTL);
+  if (cached) return cached;
   const resp = await fetch(`/api/bookings?date=${encodeURIComponent(dia)}`, {
     cache: "no-store"
   });
@@ -246,7 +279,7 @@ async function carregarBookingsAPI(dia) {
   const json = await resp.json();
   const lista = Array.isArray(json?.bookings) ? json.bookings : [];
 
-  return lista
+  const mapped = lista
     .filter((b) => b?.status !== "canceled")
     .map((b) => ({
       id: b?.id ?? null,
@@ -258,6 +291,8 @@ async function carregarBookingsAPI(dia) {
       status: b?.status ?? null
     }))
     .filter((b) => Number.isFinite(b.start) && Number.isFinite(b.end));
+  setCacheEntry(bookingsCache, dia, mapped);
+  return mapped;
 }
 
 async function carregarServicosAPI() {
@@ -580,18 +615,16 @@ async function renderCalendarioRemarcacao() {
 
   rescheduleCalendarGrid.innerHTML = "";
 
-  try {
-    await carregarExcecoesMes(ano, mes + 1);
-  } catch (e) {
-    console.error("Erro carregando excecoes:", e);
-    excecoesPorDia = new Map();
-  }
-
   let resumo = [];
   try {
-    resumo = await carregarResumoMesCliente(ano, mes + 1, duracao);
+    const [_, resumoMes] = await Promise.all([
+      carregarExcecoesMes(ano, mes + 1),
+      carregarResumoMesCliente(ano, mes + 1, duracao)
+    ]);
+    resumo = resumoMes || [];
   } catch (e) {
-    console.error("Erro carregando resumo mensal:", e);
+    console.error("Erro carregando dados do mes:", e);
+    excecoesPorDia = new Map();
   }
 
   const resumoPorDia = new Map();
@@ -649,6 +682,7 @@ async function renderCalendarioRemarcacao() {
     }
 
     btn.addEventListener("click", () => {
+      if (rescheduleSelectedDay === dayStr) return;
       rescheduleSelectedDay = dayStr;
       rescheduleSelectedStart = null;
       renderCalendarioRemarcacao();
@@ -745,7 +779,10 @@ async function renderSlotsRemarcacao() {
 
     botao.addEventListener("click", () => {
       rescheduleSelectedStart = start;
-      renderSlotsRemarcacao();
+      rescheduleSlots
+        .querySelectorAll("button.selecionado")
+        .forEach((b) => b.classList.remove("selecionado"));
+      botao.classList.add("selecionado");
     });
 
     rescheduleSlots.appendChild(botao);

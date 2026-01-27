@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+function isAdmin(req: Request) {
+  const token = req.headers.get("x-admin-token") || "";
+  const expected = process.env.ADMIN_TOKEN || "";
+  return Boolean(token) && token === expected;
+}
+
 function getSupabase() {
   const SUPABASE_URL = process.env.SUPABASE_URL!;
   const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -36,6 +42,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  if (!isAdmin(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const body = await req.json();
     const name = String(body?.name || "").trim();
@@ -76,6 +85,9 @@ export async function POST(req: Request) {
 }
 
 export async function PUT(req: Request) {
+  if (!isAdmin(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const body = await req.json();
     const id = parseId(body?.id);
@@ -128,6 +140,9 @@ export async function PUT(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  if (!isAdmin(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     const { searchParams } = new URL(req.url);
     let id = parseId(searchParams.get("id"));

@@ -3,7 +3,26 @@ const adminTitulo = document.getElementById("adminTitulo");
 adminTitulo.textContent = `Admin - ${window.APP_CONFIG?.nomePagina || "Sua Agenda Fácil"}`;
 document.title = adminTitulo.textContent;
 
-const senhaAdminConfig = window.APP_CONFIG?.senhaAdmin || "1234";
+const adminTokenStorageKey = "adminToken";
+
+function getAdminToken() {
+  return sessionStorage.getItem(adminTokenStorageKey) || "";
+}
+
+async function adminFetch(url, options = {}) {
+  const headers = {
+    ...(options.headers || {}),
+    "x-admin-token": getAdminToken()
+  };
+  return fetch(url, { ...options, headers });
+}
+
+async function validarAdminToken(token) {
+  const resp = await fetch("/api/admin/auth", {
+    headers: { "x-admin-token": token }
+  });
+  return resp.ok;
+}
 
 // ================== UI ==================
 const adminSenha = document.getElementById("adminSenha");
@@ -82,6 +101,20 @@ const btnToggleLembretes = document.getElementById("btnToggleLembretes");
 
 
 let adminAutoRefreshId = null;
+const adminCache = {
+  pagamentos: { ts: 0, ttl: 60000 },
+  lembretes7d: { ts: 0, ttl: 60000 },
+  lembretes24h: { ts: 0, ttl: 60000 },
+  calendario: { ts: 0, ttl: 120000 }
+};
+
+function cacheFresh(entry) {
+  return Date.now() - entry.ts < entry.ttl;
+}
+
+function isVisible(el) {
+  return !!el && el.style.display === "block";
+}
 
 function iniciarAutoRefreshAdmin() {
   if (adminAutoRefreshId) return;
@@ -95,17 +128,27 @@ function iniciarAutoRefreshAdmin() {
       }
     }
     await refreshCalendario();
-    await carregarPagamentosPendentes();
-    await carregarLembretes();
+    if (isVisible(painelPagamentos)) {
+      await carregarPagamentosPendentes();
+    }
+    if (isVisible(painelLembretes)) {
+      if (isVisible(painelLembretes7d)) {
+        await carregarLembretesTipo("7d");
+      }
+      if (isVisible(painelLembretes24h)) {
+        await carregarLembretesTipo("24h");
+      }
+    }
   }, 60000);
 }
 async function refreshCalendario() {
+  if (!isVisible(painelAgendamentos)) return;
+  if (cacheFresh(adminCache.calendario)) return;
   if (typeof calendarioCache !== "undefined" && calendarioCache) {
     calendarioCache.clear();
   }
-  if (painelAgendamentos && painelAgendamentos.style.display === "block") {
-    await renderCalendarioMes();
-  }
+  await renderCalendarioMes();
+  adminCache.calendario.ts = Date.now();
 }function toggleSection(el) {
   if (!el) return;
   const isHidden = (el.style.display === "none" || el.style.display === "");
@@ -117,14 +160,27 @@ if (btnTogglePadrao) btnTogglePadrao.addEventListener("click", () => toggleSecti
 if (btnToggleExcecoes) btnToggleExcecoes.addEventListener("click", () => toggleSection(secExcecoes));
 if (btnToggleInfoStudio) btnToggleInfoStudio.addEventListener("click", () => toggleSection(secInfoStudio));
 if (btnToggleServicos) btnToggleServicos.addEventListener("click", () => toggleSection(secServicos));
-if (btnTogglePagamentos) btnTogglePagamentos.addEventListener("click", () => toggleSection(painelPagamentos));
+if (btnTogglePagamentos) btnTogglePagamentos.addEventListener("click", async () => {
+  const wasHidden = painelPagamentos && (painelPagamentos.style.display === "none" || painelPagamentos.style.display === "");
+  toggleSection(painelPagamentos);
+  if (wasHidden) await carregarPagamentosPendentes({ force: true });
+});
 if (btnToggleLembretes) btnToggleLembretes.addEventListener("click", () => toggleSection(painelLembretes));
-if (btnToggleLembretes7d) btnToggleLembretes7d.addEventListener("click", () => toggleSection(painelLembretes7d));
-if (btnToggleLembretes24h) btnToggleLembretes24h.addEventListener("click", () => toggleSection(painelLembretes24h));
+if (btnToggleLembretes7d) btnToggleLembretes7d.addEventListener("click", async () => {
+  const wasHidden = painelLembretes7d && (painelLembretes7d.style.display === "none" || painelLembretes7d.style.display === "");
+  toggleSection(painelLembretes7d);
+  if (wasHidden) await carregarLembretesTipo("7d", { force: true });
+});
+if (btnToggleLembretes24h) btnToggleLembretes24h.addEventListener("click", async () => {
+  const wasHidden = painelLembretes24h && (painelLembretes24h.style.display === "none" || painelLembretes24h.style.display === "");
+  toggleSection(painelLembretes24h);
+  if (wasHidden) await carregarLembretesTipo("24h", { force: true });
+});
 if (btnVerAgendamentos) btnVerAgendamentos.addEventListener("click", async () => {
   const aberto = painelAgendamentos && painelAgendamentos.style.display === "block";
   if (painelAgendamentos) painelAgendamentos.style.display = aberto ? "none" : "block";
   if (!aberto) {
+    adminCache.calendario.ts = 0;
     await renderCalendarioMes();
   }
 });
@@ -149,7 +205,7 @@ const studioInfo = {
 async function carregarHorarioPadrao() {
   if (!defaultInicioAtendimento || !defaultFimAtendimento || !defaultInicioAlmoco || !defaultFimAlmoco) return;
   try {
-    const resp = await fetch("/api/default-settings", { cache: "no-store" });
+    const resp = await adminFetch("/api/default-settings", { cache: "no-store" });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const json = await resp.json();
     const cfg = json?.config || {};
@@ -168,7 +224,7 @@ async function carregarHorarioPadrao() {
 async function carregarInfoStudio() {
   if (!studioNomeInput || !studioEnderecoInput || !studioPixChaveInput) return;
   try {
-    const resp = await fetch("/api/default-settings", { cache: "no-store" });
+    const resp = await adminFetch("/api/default-settings", { cache: "no-store" });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const json = await resp.json();
     const cfg = json?.config || {};
@@ -195,7 +251,7 @@ async function salvarInfoStudio() {
   const almFim = hhmmParaMinutos(defaultFimAlmoco?.value || "13:00");
 
   try {
-    const resp = await fetch("/api/default-settings", {
+    const resp = await adminFetch("/api/default-settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -243,7 +299,7 @@ async function salvarHorarioPadrao(silent = false) {
   }
 
   try {
-    const resp = await fetch("/api/default-settings", {
+    const resp = await adminFetch("/api/default-settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -321,18 +377,20 @@ function nomeServico(ag) {
 }
 
 async function carregarLembretes() {
-  await carregarLembretesTipo("7d");
-  await carregarLembretesTipo("24h");
+  await carregarLembretesTipo("7d", { force: true });
+  await carregarLembretesTipo("24h", { force: true });
 }
 
-async function carregarLembretesTipo(tipo) {
+async function carregarLembretesTipo(tipo, opts = {}) {
   const alvo = tipo === "7d" ? listaLembretes7d : listaLembretes24h;
   if (!alvo) return;
+  const cacheEntry = tipo === "7d" ? adminCache.lembretes7d : adminCache.lembretes24h;
+  if (!opts.force && cacheFresh(cacheEntry)) return;
   alvo.textContent = "Carregando...";
 
   let lista = [];
   try {
-    const resp = await fetch(`/api/bookings/reminders?type=${encodeURIComponent(tipo)}`, {
+    const resp = await adminFetch(`/api/bookings/reminders?type=${encodeURIComponent(tipo)}`, {
       cache: "no-store"
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -346,6 +404,7 @@ async function carregarLembretesTipo(tipo) {
 
   if (!lista.length) {
     alvo.textContent = "Sem lembretes pendentes.";
+    cacheEntry.ts = Date.now();
     return;
   }
 
@@ -410,7 +469,7 @@ async function carregarLembretesTipo(tipo) {
         }
         window.open(link, "_blank");
         try {
-          const resp = await fetch("/api/bookings", {
+          const resp = await adminFetch("/api/bookings", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -426,6 +485,7 @@ async function carregarLembretesTipo(tipo) {
         linha.style.background = "#dcfce7";
         linha.style.borderRadius = "10px";
         linha.style.padding = "10px";
+        cacheEntry.ts = 0;
       };
 
       acoes.appendChild(btnWpp);
@@ -434,15 +494,17 @@ async function carregarLembretesTipo(tipo) {
       alvo.appendChild(linha);
     });
   });
+  cacheEntry.ts = Date.now();
 }
 
-async function carregarPagamentosPendentes() {
+async function carregarPagamentosPendentes(opts = {}) {
   if (!listaPagamentosPendentes) return;
+  if (!opts.force && cacheFresh(adminCache.pagamentos)) return;
   listaPagamentosPendentes.textContent = "Carregando...";
 
   let lista = [];
   try {
-    const resp = await fetch("/api/bookings/pending-payments", { cache: "no-store" });
+    const resp = await adminFetch("/api/bookings/pending-payments", { cache: "no-store" });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const json = await resp.json();
     lista = Array.isArray(json?.bookings) ? json.bookings : [];
@@ -454,6 +516,7 @@ async function carregarPagamentosPendentes() {
 
   if (!lista.length) {
     listaPagamentosPendentes.textContent = "Sem pagamentos pendentes.";
+    adminCache.pagamentos.ts = Date.now();
     return;
   }
 
@@ -499,7 +562,7 @@ async function carregarPagamentosPendentes() {
       }
       window.open(link, "_blank");
       try {
-        const resp = await fetch("/api/bookings", {
+        const resp = await adminFetch("/api/bookings", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -512,7 +575,7 @@ async function carregarPagamentosPendentes() {
       } catch (e) {
         console.error("Erro ao marcar PIX enviado:", e);
       }
-      await carregarPagamentosPendentes();
+      await carregarPagamentosPendentes({ force: true });
     };
 
     const btnPago = document.createElement("button");
@@ -522,7 +585,7 @@ async function carregarPagamentosPendentes() {
     btnPago.style.padding = "6px 10px";
     btnPago.onclick = async () => {
       try {
-        const resp = await fetch("/api/bookings", {
+        const resp = await adminFetch("/api/bookings", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -538,7 +601,7 @@ async function carregarPagamentosPendentes() {
         alert("Nao foi possivel marcar como pago.");
         return;
       }
-      await carregarPagamentosPendentes();
+      await carregarPagamentosPendentes({ force: true });
     };
 
     acoes.appendChild(btnCobrar);
@@ -548,6 +611,7 @@ async function carregarPagamentosPendentes() {
     linha.appendChild(acoes);
     listaPagamentosPendentes.appendChild(linha);
   });
+  adminCache.pagamentos.ts = Date.now();
 }
 
 
@@ -637,14 +701,14 @@ async function salvarConfigDoDia(dia, cfg) {
     almocoFim: Number(cfg.almocoFim)
   };
 
-  let resp = await fetch("/api/day-settings", {
+    let resp = await adminFetch("/api/day-settings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
 
   if (resp.status === 409) {
-    resp = await fetch("/api/day-settings", {
+    resp = await adminFetch("/api/day-settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -910,7 +974,7 @@ if (s.tipo === "almoco") {
       const btnPago = criarIcone("Pago", pagoAtivo ? iconPagoOn : iconPago, pagoAtivo);
       btnPago.onclick = async () => {
         try {
-          const resp = await fetch("/api/bookings", {
+          const resp = await adminFetch("/api/bookings", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -1305,7 +1369,7 @@ if (btnApagarRemarcar) {
     if (!ok) return;
 
     try {
-      const resp = await fetch(`/api/bookings?id=${encodeURIComponent(remarcarAgendamento.id)}`, {
+      const resp = await adminFetch(`/api/bookings?id=${encodeURIComponent(remarcarAgendamento.id)}`, {
         method: "DELETE"
       });
       const json = await resp.json().catch(() => ({}));
@@ -1360,7 +1424,7 @@ if (btnConfirmarRemarcar) {
     }
 
     try {
-      const resp = await fetch("/api/bookings", {
+      const resp = await adminFetch("/api/bookings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1444,7 +1508,7 @@ async function apagarAgendamentoAdmin(dia, start) {
   }
 
   try {
-    const resp = await fetch(`/api/bookings?id=${encodeURIComponent(ag.id)}`, {
+    const resp = await adminFetch(`/api/bookings?id=${encodeURIComponent(ag.id)}`, {
       method: "DELETE"
     });
     const json = await resp.json().catch(() => ({}));
@@ -1522,7 +1586,7 @@ async function carregarServicosAPI() {
 }
 
 async function criarServico(payload) {
-  const resp = await fetch("/api/services", {
+  const resp = await adminFetch("/api/services", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -1533,7 +1597,7 @@ async function criarServico(payload) {
 }
 
 async function atualizarServico(payload) {
-  const resp = await fetch("/api/services", {
+  const resp = await adminFetch("/api/services", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -1544,7 +1608,7 @@ async function atualizarServico(payload) {
 }
 
 async function apagarServico(id) {
-  const resp = await fetch(`/api/services?id=${encodeURIComponent(id)}`, {
+  const resp = await adminFetch(`/api/services?id=${encodeURIComponent(id)}`, {
     method: "DELETE"
   });
   const json = await resp.json().catch(() => ({}));
@@ -1670,7 +1734,7 @@ async function limparAgendamentos() {
   if (!ok) return;
 
   try {
-    const resp = await fetch("/api/bookings?all=1", { method: "DELETE" });
+    const resp = await adminFetch("/api/bookings?all=1", { method: "DELETE" });
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(json?.error || `HTTP ${resp.status}`);
   } catch (e) {
@@ -1992,6 +2056,7 @@ async function renderCalendarioMes() {
 
     calendarioGrid.appendChild(cell);
   }
+  adminCache.calendario.ts = Date.now();
 }
 
 if (agendaDetalheFechar) {
@@ -2056,7 +2121,7 @@ async function salvarDiasDescanso(silent = false) {
     .filter((d) => Number.isFinite(d));
 
   try {
-    const resp = await fetch("/api/weekly-closed", {
+    const resp = await adminFetch("/api/weekly-closed", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ days })
@@ -2138,7 +2203,7 @@ async function renderConfigsFechadas() {
           almocoInicio: Number(c.almocoInicio ?? 720),
           almocoFim: Number(c.almocoFim ?? 780)
         };
-        const resp = await fetch("/api/day-settings", {
+        const resp = await adminFetch("/api/day-settings", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
@@ -2161,10 +2226,17 @@ async function renderConfigsFechadas() {
 }
 // ================== LOGIN ==================
 btnEntrarAdmin.addEventListener("click", async () => {
-  if (adminSenha.value !== senhaAdminConfig) {
-    alert("Senha incorreta.");
+  const token = adminSenha.value.trim();
+  if (!token) {
+    alert("Informe o token do admin.");
     return;
   }
+  const ok = await validarAdminToken(token);
+  if (!ok) {
+    alert("Token invalido.");
+    return;
+  }
+  sessionStorage.setItem(adminTokenStorageKey, token);
 
   adminConteudo.style.display = "block";
   iniciarAutoRefreshAdmin();
@@ -2173,8 +2245,17 @@ btnEntrarAdmin.addEventListener("click", async () => {
   await carregarHorarioPadrao();
   await carregarInfoStudio();
   await renderConfigsFechadas();
-  await carregarPagamentosPendentes();
-  await carregarLembretes();
+  if (isVisible(painelPagamentos)) {
+    await carregarPagamentosPendentes({ force: true });
+  }
+  if (isVisible(painelLembretes)) {
+    if (isVisible(painelLembretes7d)) {
+      await carregarLembretesTipo("7d", { force: true });
+    }
+    if (isVisible(painelLembretes24h)) {
+      await carregarLembretesTipo("24h", { force: true });
+    }
+  }
   if (painelAgendamentos && painelAgendamentos.style.display === "block") {
     await renderCalendarioMes();
   }

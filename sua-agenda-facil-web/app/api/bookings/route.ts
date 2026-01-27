@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+function isAdmin(req: Request) {
+  const token = req.headers.get("x-admin-token") || "";
+  const expected = process.env.ADMIN_TOKEN || "";
+  return Boolean(token) && token === expected;
+}
+
 function getSupabase() {
   const SUPABASE_URL = process.env.SUPABASE_URL!;
   const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -122,6 +128,17 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     }
 
+    const admin = isAdmin(req);
+    const adminOnlyActions = new Set([
+      "toggle_paid",
+      "mark_reminder_7d",
+      "mark_reminder_24h",
+      "mark_pix_sent"
+    ]);
+    if (adminOnlyActions.has(action) && !admin) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const supabase = getSupabase();
 
     if (action === "toggle_paid") {
@@ -194,6 +211,9 @@ export async function PUT(req: Request) {
       const end = Number(body?.end_min ?? body?.end);
       const force = Boolean(body?.force);
 
+      if (force && !admin) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
       if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
         return NextResponse.json({ error: "Invalid day" }, { status: 400 });
       }
@@ -312,6 +332,9 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    if (!isAdmin(req)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const day = searchParams.get("date");

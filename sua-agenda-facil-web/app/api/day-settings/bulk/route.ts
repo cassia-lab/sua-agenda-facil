@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+function isAdmin(req: Request) {
+  const token = req.headers.get("x-admin-token") || "";
+  const expected = process.env.ADMIN_TOKEN || "";
+  return Boolean(token) && token === expected;
+}
+
 const DEFAULT_CONFIG = {
   fechado: false,
   diaInicio: 8 * 60,
@@ -29,6 +35,9 @@ function formatDate(d: Date) {
 }
 
 export async function POST(req: Request) {
+  if (!isAdmin(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     let body: any = null;
     try {
