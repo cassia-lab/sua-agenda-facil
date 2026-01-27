@@ -26,9 +26,24 @@ const btnSalvarRemarcacao = document.getElementById("btnSalvarRemarcacao");
 const btnCancelarRemarcacao = document.getElementById("btnCancelarRemarcacao");
 
 // ======= TITULO vindo do config.js =======
-const nomePagina = window.APP_CONFIG?.nomePagina || "Sua Agenda Facil";
-if (tituloPagina) tituloPagina.textContent = nomePagina;
-document.title = nomePagina;
+const nomePaginaBase = "Sua Agenda Facil";
+if (tituloPagina) tituloPagina.textContent = nomePaginaBase;
+document.title = nomePaginaBase;
+
+async function aplicarTituloStudio() {
+  try {
+    const resp = await fetch("/api/studio-info", { cache: "no-store" });
+    if (!resp.ok) return;
+    const json = await resp.json();
+    const studioNome = String(json?.studioNome || "").trim();
+    if (!studioNome) return;
+    const titulo = `Sua Agenda Facil - ${studioNome}`;
+    if (tituloPagina) tituloPagina.textContent = titulo;
+    document.title = titulo;
+  } catch {
+    // ignore
+  }
+}
 
 // ======== CONFIG PADRAO ========
 const padrao = {
@@ -1133,6 +1148,7 @@ async function confirmarAgendamentoDoModal() {
     console.error("Erro ao carregar dias de descanso:", e);
     diasDescansoSemana = null;
   }
+  await aplicarTituloStudio();
 
   if (dataInput) {
     const prox = proximaDataPermitidaLocal();

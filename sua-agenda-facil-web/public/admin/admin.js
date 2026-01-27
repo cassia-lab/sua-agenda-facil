@@ -1,7 +1,24 @@
-// ================== TÍTULO ==================
+// ================== TITULO ==================
 const adminTitulo = document.getElementById("adminTitulo");
-adminTitulo.textContent = `Admin - ${window.APP_CONFIG?.nomePagina || "Sua Agenda Fácil"}`;
+const adminNomeBase = "Sua Agenda Facil";
+adminTitulo.textContent = `Admin - ${adminNomeBase}`;
 document.title = adminTitulo.textContent;
+
+async function aplicarTituloStudioAdmin() {
+  try {
+    const resp = await fetch("/api/studio-info", { cache: "no-store" });
+    if (!resp.ok) return;
+    const json = await resp.json();
+    const studioNome = String(json?.studioNome || "").trim();
+    if (!studioNome) return;
+    const titulo = `Admin - Sua Agenda Facil - ${studioNome}`;
+    adminTitulo.textContent = titulo;
+    document.title = titulo;
+  } catch {
+    // ignore
+  }
+}
+
 
 const adminTokenStorageKey = "adminToken";
 
@@ -2239,6 +2256,7 @@ btnEntrarAdmin.addEventListener("click", async () => {
   sessionStorage.setItem(adminTokenStorageKey, token);
 
   adminConteudo.style.display = "block";
+  await aplicarTituloStudioAdmin();
   iniciarAutoRefreshAdmin();
   await carregarForm(dataAdmin.value);
   await carregarDiasDescanso();
@@ -2362,5 +2380,7 @@ if (btnSalvarPadraoCompleto) {
 if (btnSalvarInfoStudio) {
   btnSalvarInfoStudio.addEventListener("click", salvarInfoStudio);
 }
+
+
 
 
