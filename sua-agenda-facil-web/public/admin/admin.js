@@ -19,6 +19,8 @@ async function aplicarTituloStudioAdmin() {
   }
 }
 
+aplicarTituloStudioAdmin();
+
 
 const adminTokenStorageKey = "adminToken";
 

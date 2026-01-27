@@ -45,6 +45,8 @@ async function aplicarTituloStudio() {
   }
 }
 
+aplicarTituloStudio();
+
 // ======== CONFIG PADRAO ========
 const padrao = {
   diaInicio: 8 * 60,
@@ -988,14 +990,19 @@ function abrirModalConfirmacao() {
   const telInput = document.getElementById("telefoneCliente");
   const btnConfirmar = document.getElementById("btnConfirmarModal");
   const btnCancelar = document.getElementById("btnCancelarModal");
+  const campos = modalConfirmacao?.querySelectorAll(".modal-field") || [];
 
   if (!modalConfirmacao) return;
+
+  const card = modalConfirmacao.querySelector(".modal-card");
+  if (card) card.classList.remove("success");
 
   if (titulo) titulo.textContent = "Informe seus dados";
   if (texto) texto.innerHTML = "";
 
   if (nomeInput) { nomeInput.value = ""; nomeInput.disabled = false; }
   if (telInput) { telInput.value = ""; telInput.disabled = false; }
+  campos.forEach((el) => { el.style.display = "block"; });
 
   if (btnConfirmar) { btnConfirmar.style.display = "block"; btnConfirmar.textContent = "Confirmar"; }
   if (btnCancelar) { btnCancelar.style.display = "block"; btnCancelar.textContent = "Cancelar"; }
@@ -1101,7 +1108,10 @@ async function confirmarAgendamentoDoModal() {
   const texto = document.getElementById("modalTexto");
   const btnConfirmar = document.getElementById("btnConfirmarModal");
   const btnCancelar = document.getElementById("btnCancelarModal");
+  const campos = modalConfirmacao?.querySelectorAll(".modal-field") || [];
+  const card = modalConfirmacao?.querySelector(".modal-card");
 
+  if (card) card.classList.add("success");
   if (titulo) titulo.textContent = "Agendamento feito com sucesso";
 
   if (texto) {
@@ -1114,26 +1124,32 @@ async function confirmarAgendamentoDoModal() {
 
   if (nomeInput) nomeInput.disabled = true;
   if (telInput) telInput.disabled = true;
+  campos.forEach((el) => { el.style.display = "none"; });
   if (btnConfirmar) btnConfirmar.style.display = "none";
 
   if (btnCancelar) {
     btnCancelar.textContent = "OK";
-    btnCancelar.onclick = () => fecharModalConfirmacao();
+    btnCancelar.onclick = async () => {
+      fecharModalConfirmacao();
+      if (msgSucesso) msgSucesso.style.display = "none";
+      if (servicoSelect) servicoSelect.selectedIndex = 0;
+      atualizarResumoServico();
+      const prox = proximaDataPermitidaLocal();
+      if (dataInput) dataInput.value = formatYYYYMMDDLocal(prox);
+      selectedDia = dataInput ? dataInput.value : "";
+      calendarioMesAtual = new Date(prox.getFullYear(), prox.getMonth(), 1);
+      if (selectedDateLabel) selectedDateLabel.textContent = formatarDataResumida(selectedDia);
+      renderCalendario();
+      await gerarHorarios();
+    };
   }
 
   const msgSucesso = document.getElementById("msgSucesso");
   if (msgSucesso) {
-    msgSucesso.style.display = "block";
-    msgSucesso.innerHTML = `
-      <strong>Agendamento feito com sucesso</strong><br>
-      Esperamos voce em <strong>${dataBR}</strong> as <strong>${horaInicio}</strong>.<br>
-      Servico: <strong>${servico}</strong><br>
-      Aguarde a confirmacao pelo WhatsApp.
-    `;
-    msgSucesso.scrollIntoView({ behavior: "smooth", block: "start" });
+    msgSucesso.style.display = "none";
   }
 
-  gerarHorarios();
+  await gerarHorarios();
   agendamentoPendente = null;
 }
 
